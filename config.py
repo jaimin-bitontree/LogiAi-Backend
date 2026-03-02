@@ -2,8 +2,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    MONGODB_URI: str
-    DB_NAME:     str
+    MONGODB_URI:        str
+    DB_NAME:            str
+    GMAIL_ADDRESS:      str
+    GMAIL_APP_PASSWORD: str
 
     class Config:
         env_file = ".env"

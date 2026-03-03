@@ -27,7 +27,6 @@ class LanguageMetadata(BaseModel):
     detected_language: Optional[str] = None
     confidence: Optional[float] = None
     translated_to_english: bool = False
-    original_text: Optional[str] = None
 
 # ============================================================
 # VALIDATION RESULT MODEL

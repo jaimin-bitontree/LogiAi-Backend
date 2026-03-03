@@ -4,12 +4,24 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from config import settings
 from db.client import connect_db, close_db
+from utils.poller import start_poller, stop_poller
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
+    # 🔹 Connect DB
     await connect_db(settings.MONGODB_URI, settings.DB_NAME)
-    yield
+
+    # 🔹 Start Poller
+    start_poller()
+
+    yield  # FastAPI runs here
+
+    # 🔹 Stop Poller
+    stop_poller()
+
+    # 🔹 Close DB
     await close_db()
 
 

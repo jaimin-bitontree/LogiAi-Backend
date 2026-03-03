@@ -7,7 +7,7 @@ def connect_gmail() -> imaplib.IMAP4_SSL:
     Establish secure IMAP connection to Gmail.
     """
     try:
-        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        mail = imaplib.IMAP4_SSL(settings.IMAP_GMAIL, settings.IMAP_PORT)
         mail.login(settings.GMAIL_ADDRESS, settings.GMAIL_APP_PASSWORD)
         mail.select("inbox")
         return mail
@@ -55,7 +55,11 @@ def fetch_unread_emails() -> list[bytes]:
                 print(f"⚠️ Failed to fetch email ID {email_id}")
                 continue
 
-            raw_email = data[0][1]
+            if data and len(data) > 0 and data[0] and len(data[0]) > 1:
+                raw_email = data[0][1]
+            else:
+                print("❌ No email data found, skipping...")
+                continue
 
             if raw_email:
                 raw_emails.append(raw_email)

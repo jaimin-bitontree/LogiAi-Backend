@@ -37,9 +37,8 @@ async def generate_reqid(state: AgentState) -> AgentState:
                         direction="incoming",
                         subject=state.get("subject"),
                         body=state.get("body", ""),
-                        attachments=state.get("attachments") or {},
+                        attachments=state.get("attachments") or [],
                     )
-        
         message_ids = state.get("message_ids")
 
         if not isinstance(message_ids, list):
@@ -50,7 +49,8 @@ async def generate_reqid(state: AgentState) -> AgentState:
                         thread_id=thread_id,
                         customer_email=state["customer_email"],
                         subject=state.get("subject"),
-                        attachments=state.get("attachments") or {},
+                        body=state.get("body", ""),
+                        attachments=state.get("attachments") or [],
                         messages=[message],
                         message_ids=message_ids,
                     )

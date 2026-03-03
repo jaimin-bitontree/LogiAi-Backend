@@ -1,5 +1,6 @@
 from email import policy
 from email.parser import BytesParser
+from models.shipment import Attachment
 from utils.email_utils import (
     extract_email_address,
     extract_body,

@@ -1,4 +1,4 @@
-from utils.gmail_receiver import fetch_unread_emails
+from services.gmail_receiver import fetch_unread_emails
 
 print("🔍 Checking Gmail inbox for unread emails...\n")
 

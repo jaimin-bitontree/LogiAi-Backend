@@ -1,16 +1,17 @@
 import json
 import os
-from dotenv import load_dotenv
-load_dotenv()
 from typing import Optional
 from enum import Enum
+from dotenv import load_dotenv
 from groq import Groq
 from pydantic import BaseModel
-from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from agent.state import AgentState
-from config import settings
+from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from models.shipment import ValidationResult
 
-client = Groq(api_key=settings.GROQ_API_KEY)
+load_dotenv()
+
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 
 # ===================================================
@@ -31,12 +32,12 @@ class FieldDetail(BaseModel):
 
 
 class IntentResult(BaseModel):
-    intent:          EmailIntent
-    confidence:      float
-    reason:          str
-    request_id:      Optional[str] = None
+    intent: EmailIntent
+    confidence: float
+    reason: str
+    # missing_information
+    request_id: Optional[str] = None
     provided_fields: Optional[list[FieldDetail]] = None
-    missing_fields:  Optional[list[str]] = None
 
 
 # ===================================================
@@ -51,30 +52,24 @@ Both the subject and body together form the full context — read BOTH carefully
 The subject alone may reveal the intent even if the body is short or vague.
 Emails may be written as plain conversational paragraphs with no labels or structure.
 
-Classify the given email body into exactly ONE of these intents:
+Classify the given email into exactly ONE of these intents:
 
-1. new_request         - Sender wants a new shipment, pickup, or logistics service.
-2. status_inquiry      - Sender is asking about the status of an existing shipment/order.
-3. confirmation        - Sender is confirming a previously discussed shipment or booking.
-4. cancellation        - Sender wants to cancel an existing shipment or order.
-5. missing_information - Email is too vague or missing critical required logistics fields.
+1. new_request - Sender wants a new shipment, pickup, or logistics service.
+2. status_inquiry - Sender is asking about the status of an existing shipment/order.
+3. confirmation - Sender is confirming a previously discussed shipment or booking.
+4. cancellation - Sender wants to cancel an existing shipment or order.
+5. missing_information - Email is too vague or missing critical logistics details.
                          If the email has NO origin, NO destination, NO quantity, and NO
                          item details — it MUST be missing_information even if it hints
-                         at a future shipment or asks about options.
+                         at a future shipment.
 
-The logistics schema has these REQUIRED fields:
-{json.dumps(REQUIRED_FIELDS, indent=2)}
-
-And these OPTIONAL fields:
-{json.dumps(OPTIONAL_FIELDS, indent=2)}
-
-ONLY when intent is missing_information, you MUST:
-1. Extract "request_id" from the email — any shipment ID, order ID, tracking number,
-   booking ref, or customer reference found anywhere in the text. If none, set null.
-2. Go through EVERY field (required + optional) and scan the paragraph carefully:
-   - Value IS mentioned anywhere in text -> add to "provided_fields":
-     {{"field": "<field_name>", "value": "<extracted value>"}}
-   - Value is NOT mentioned -> add field name to "missing_fields"
+ONLY when intent is missing_information, you MUST also:
+1. Extract "request_id" — any shipment ID, order ID, tracking number, booking ref,
+   or customer reference found anywhere in the email. If none found, set null.
+2. Extract "provided_fields" — scan the email and list ONLY the fields that ARE
+   mentioned with their values. Use these field names:
+   {json.dumps(REQUIRED_FIELDS + OPTIONAL_FIELDS)}
+   Only include fields that are clearly present. Do NOT include fields that are missing.
 
 Respond ONLY in this exact JSON format, no extra text, no markdown:
 {{
@@ -82,39 +77,31 @@ Respond ONLY in this exact JSON format, no extra text, no markdown:
   "confidence": <float 0.0 to 1.0>,
   "reason": "<one sentence explanation>",
   "request_id": "<extracted ID or null>",
-  "provided_fields": [{{"field": "field_name", "value": "extracted value"}}],
-  "missing_fields": ["field1", "field2"]
+  "provided_fields": [{{"field": "field_name", "value": "extracted value"}}]
 }}
 
-Note: "request_id", "provided_fields", and "missing_fields" are ONLY populated
-when intent is missing_information. For all other intents set all three to null.
+Note: "request_id" and "provided_fields" are ONLY populated when intent is
+missing_information. For all other intents set both to null.
 """.strip()
 
 
 # ===================================================
-# MAIN FUNCTION
+# CORE FUNCTION
 # ===================================================
 
 def detect_intent(email_subject: str, email_body: str) -> IntentResult:
     """
     Detects the intent of a logistics email using Groq LLM.
     Expects TRANSLATED subject and body (always English).
-    Called by intent_node() which reads translated_subject and
-    translated_body from AgentState.
 
-    Returns IntentResult with:
-      - intent          : one of the 5 EmailIntent values
-      - confidence      : float 0.0 to 1.0
-      - reason          : one sentence explanation from LLM
-      - request_id      : only for missing_information — any ref ID found
-      - provided_fields : only for missing_information — fields found in email
-      - missing_fields  : only for missing_information — fields not found
+    For missing_information intent also extracts:
+      - request_id      : any reference ID found in the email
+      - provided_fields : fields that ARE present in the email
+        (missing fields are computed in intent_node, not here)
     """
-
     subject = (email_subject or "").strip()
     body = (email_body or "").strip()
 
-    # Guard clause — both subject and body are empty
     if not subject and not body:
         return IntentResult(
             intent=EmailIntent.MISSING_INFORMATION,
@@ -122,15 +109,13 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
             reason="Email subject and body are both empty.",
             request_id=None,
             provided_fields=None,
-            missing_fields=REQUIRED_FIELDS,
         )
 
-    # Build the combined input sent to the LLM
     email_content = f"Subject: {subject}\n\nBody:\n{body}" if subject else f"Body:\n{body}"
 
     try:
         response = client.chat.completions.create(
-            model=settings.LANGUAGE_TRANSLATE_MODEL,
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": INTENT_SYSTEM_PROMPT},
                 {
@@ -143,13 +128,15 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
         )
 
         raw_text = response.choices[0].message.content.strip()
-
-        # FIX 5: Strip markdown code fences if LLM wraps response in ```json
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
 
         parsed = json.loads(raw_text)
 
-        # Build provided_fields list only if present (missing_information intent)
+        try:
+            confidence = max(0.0, min(1.0, float(parsed["confidence"])))
+        except (TypeError, ValueError):
+            confidence = 0.0
+
         provided = None
         if parsed.get("provided_fields"):
             provided = [
@@ -159,32 +146,22 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
 
         return IntentResult(
             intent=EmailIntent(parsed["intent"]),
-            confidence=float(parsed["confidence"]),
+            confidence=confidence,
             reason=parsed["reason"],
             request_id=parsed.get("request_id"),
             provided_fields=provided,
-            missing_fields=parsed.get("missing_fields"),
         )
 
     except json.JSONDecodeError as e:
-        # LLM returned text that is not valid JSON
         raise ValueError(f"LLM returned invalid JSON: {e}")
-
     except KeyError as e:
-        # JSON parsed but a required key like 'intent' or 'confidence' is missing
         raise ValueError(f"Missing expected field in LLM response: {e}")
-
     except ValueError as e:
-        # Intent string returned by LLM does not match any EmailIntent enum value
         raise ValueError(f"Invalid intent value returned by LLM: {e}")
-
     except Exception as e:
-        # Groq API down, network timeout, rate limit, or any unexpected error
         raise RuntimeError(f"Intent detection failed: {e}")
-
     finally:
-        # Always logs — whether success or error
-        print(f"[intent_node] detect_intent() called | subject: '{subject[:50]}' | body: '{body[:50]}...'")
+        print(f"[intent_node] detect_intent() | subject: '{subject[:50]}' | body: '{body[:50]}...'")
 
 
 # ===================================================
@@ -192,29 +169,41 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
 # ===================================================
 
 def intent_node(state: AgentState) -> dict:
-    """
-    LangGraph node that reads translated_subject and translated_body
-    from state, runs detect_intent, and writes intent back to state.
-    Also prints a clear console summary for every email processed.
-    """
     translated_subject = state.get("translated_subject", "")
     translated_body = state.get("translated_body", "")
 
     result = detect_intent(translated_subject, translated_body)
-
-    # Print result to console
     _print_intent_result(translated_subject, result)
 
-    # Return only the fields this node changes — LangGraph merges it into state
-    return {
-        "intent": result.intent.value,
-    }
+    output = {"intent": result.intent.value}
 
+    if result.intent == EmailIntent.MISSING_INFORMATION:
+        request_data = {}
+        if result.provided_fields:
+            for f in result.provided_fields:
+                if f.value is not None:
+                    request_data[f.field] = f.value
+
+        provided_keys = set(request_data.keys())
+        missing_fields = [f for f in REQUIRED_FIELDS if f not in provided_keys]
+
+        output["request_id"] = result.request_id
+        output["request_data"] = request_data
+        output["validation_result"] = ValidationResult(
+            is_valid=len(missing_fields) == 0,
+            missing_fields=missing_fields,
+        )
+
+    return output
+
+
+# ===================================================
+# CONSOLE PRINT HELPER
+# ===================================================
 
 def _print_intent_result(subject: str, result: IntentResult) -> None:
-    """Prints a clean intent detection summary to the console."""
     print("\n" + "=" * 60)
-    print(f"[intent_node] RESULT")
+    print("[intent_node] RESULT")
     print(f"  Subject    : {subject.strip() or '(no subject)'}")
     print(f"  Intent     : {result.intent.value}")
     print(f"  Confidence : {result.confidence:.2f}")
@@ -230,101 +219,60 @@ def _print_intent_result(subject: str, result: IntentResult) -> None:
 
 
 # ===================================================
-# MANUAL TEST — run with: python intent_node.py
+# TEMPORARY TEST
 # ===================================================
 
 if __name__ == "__main__":
 
     test_emails = [
-        # (subject, body)
+        ("Shipment Request - Chicago to Dallas",
+         "Hi, we are SteelCore Manufacturing based out of Chicago and we need to move "
+         "industrial conveyor belt parts to Dallas Texas. We have 3 pallets, 1500 kg total, "
+         "120x80x100 cm each. Origin: 142 West Industrial Ave Chicago IL 60601. "
+         "Destination: 300 Commerce Street Dallas TX 75201. "
+         "Sea freight, FCL, EXW incoterm. Contact John Miller +1-312-555-0192."),
 
-        # new_request
-        (
-            "Shipment Request - Chicago to Dallas",
-            """
-            Hi, we are SteelCore Manufacturing based out of Chicago and we need to move
-            some industrial conveyor belt parts to our client down in Dallas Texas. We have
-            got 3 pallets ready to go, each one is about 500 kg so 1500 kg in total and each
-            pallet is roughly 120 by 80 by 100 centimeters. Our warehouse is at 142 West
-            Industrial Ave Chicago IL 60601 and the delivery should go to 300 Commerce Street
-            Dallas TX 75201. We are thinking sea freight, FCL, EXW incoterm. We would need
-            pickup by March 14th somewhere between 9 and 12 in the morning. You can reach
-            John Miller on +1-312-555-0192 if you need anything. Let us know pricing and
-            available slots please.
-            """
-        ),
+        ("Follow up on SHP-20948",
+         "Hey, following up on shipment SHP-20948 from Miami to Atlanta sent Feb 20th. "
+         "Still not received. Can you give us an ETA? Sarah Thompson, supply chain team."),
 
-        # status_inquiry — subject carries the intent clearly
-        (
-            "Follow up on SHP-20948",
-            """
-            Hey there, I am following up on a shipment we sent out from Miami to Atlanta
-            back on February 20th. It was supposed to land by March 1st but we still have
-            not received anything. Our client is really pushing us for an update so if
-            someone could check where the goods are and give us a realistic ETA that would
-            be great. Sarah Thompson here from the supply chain team.
-            """
-        ),
+        ("Booking Confirmation BK-3821",
+         "Confirming our booking BK-3821, invoice INV-992, agreed $1200. "
+         "Pickup March 10th 9am from 55 Harbor Blvd Miami FL 33101. "
+         "Delivering to 300 Commerce Street Atlanta GA 30301. 10 cartons, 200kg electronics."),
 
-        # confirmation
-        (
-            "Booking Confirmation BK-3821",
-            """
-            Hi just writing to confirm everything we talked about on the call with Kevin on
-            March 3rd. Invoice INV-992, we agreed on twelve hundred dollars and we will
-            process the payment today. Pickup is set for March 10th at 9 in the morning from
-            Warehouse A at 55 Harbor Blvd Miami FL 33101 and it goes to 300 Commerce Street
-            Atlanta GA 30301. We are sending 10 cartons of consumer electronics weighing
-            200 kg in total. Please send the final invoice to billing@clientb.com. Thanks,
-            David Chen.
-            """
-        ),
+        ("Cancel Order ORD-4821",
+         "We need to cancel order ORD-4821 booked for March 8th Houston TX to Phoenix AZ. "
+         "Project pushed back indefinitely. Please refund $500 deposit. Emily Watson, BuildRight."),
 
-        # cancellation — subject makes it unambiguous
-        (
-            "Cancel Order ORD-4821",
-            """
-            Hello, our client has pushed the whole project back indefinitely so we simply
-            do not need the shipment anymore. We paid a five hundred dollar deposit on
-            March 1st and would like that refunded. Could you please confirm in writing
-            that the order is cancelled? Thanks, Emily Watson from BuildRight.
-            """
-        ),
+        ("Quick question",
+         "Hey, we might need to move some stuff in the coming weeks. "
+         "Nothing confirmed yet. Will be in touch. Thanks."),
 
-        # missing_information — vague body, vague subject
-        (
-            "Quick question",
-            """
-            Hey just wanted to shoot a quick message and say we might be needing to move
-            some stuff in the coming weeks. Nothing is confirmed on our side just yet.
-            Will be in touch once things are a bit clearer. Thanks.
-            """
-        ),
-
-        # missing_information — partial fields, subject gives extra context
-        (
-            "Shipment inquiry - Boston office furniture",
-            """
-            Hi there, we are looking to arrange a shipment of office furniture, around
-            10 pallets worth, coming out of our Boston warehouse which is in zip code 02101.
-            Total weight is about 850 kg and volume is roughly 12 CBM. We are thinking sea
-            freight and LCL. The goods are not dangerous and they are stackable. Our internal
-            reference for this is REQ-7731 and you can contact Mark Evans at mark@company.com.
-            We have not nailed down the destination yet and we also do not have the incoterm
-            sorted out yet. Let us know how to proceed.
-            """
-        ),
+        ("Shipment inquiry - Boston office furniture",
+         "Looking to ship office furniture, 10 pallets from Boston warehouse zip 02101. "
+         "Weight 850kg, volume 12 CBM. Sea freight, LCL. Not dangerous, stackable. "
+         "Reference REQ-7731. Contact Mark Evans mark@company.com. "
+         "Destination not decided yet, incoterm not sorted."),
     ]
 
-    for i, (subject, body) in enumerate(test_emails, 1):
+    passed = 0
+    failed = 0
+    expected_intents = [
+        "new_request", "status_inquiry", "confirmation",
+        "cancellation", "missing_information", "missing_information"
+    ]
+
+    for i, ((subject, body), expected) in enumerate(zip(test_emails, expected_intents), 1):
         print(f"\n{'=' * 60}")
-        print(f"Test {i}:")
-        print(f"Subject: {subject.strip()}")
+        print(f"Test {i}: {subject}")
+        print(f"Expected : {expected}")
         try:
             result = detect_intent(subject, body)
-            print(f"Intent    : {result.intent.value}")
+            status = "✅ PASS" if result.intent.value == expected else "❌ FAIL"
+            print(f"Got      : {result.intent.value}  {status}")
             print(f"Confidence: {result.confidence:.2f}")
-            print(f"Reason    : {result.reason}")
+            print(f"Reason   : {result.reason}")
 
             if result.intent == EmailIntent.MISSING_INFORMATION:
                 print(f"Request ID: {result.request_id or 'NOT FOUND'}")
@@ -333,7 +281,22 @@ if __name__ == "__main__":
                     for f in result.provided_fields:
                         print(f"  - {f.field}: {f.value}")
 
+                # Simulate what intent_node does with provided_fields
+                request_data = {f.field: f.value for f in result.provided_fields if f.value} if result.provided_fields else {}
+                missing_fields = [f for f in REQUIRED_FIELDS if f not in request_data]
+                print(f"Missing (computed): {missing_fields}")
+
+            if result.intent.value == expected:
+                passed += 1
+            else:
+                failed += 1
+
         except ValueError as e:
-            print(f"[ERROR] Bad LLM response: {e}")
+            print(f"[ERROR] {e}")
+            failed += 1
         except RuntimeError as e:
-            print(f"[ERROR] Service error: {e}")
+            print(f"[ERROR] {e}")
+            failed += 1
+
+    print(f"\n{'=' * 60}")
+    print(f"Results: {passed} passed, {failed} failed out of {len(test_emails)} tests")

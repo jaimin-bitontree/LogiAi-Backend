@@ -6,6 +6,7 @@ from utils.email_utils import (
     clean_email_body,
     extract_attachments,
 )
+from models.shipment import Attachment
 from agent.state import AgentState
 
 
@@ -30,8 +31,15 @@ def parser_node(state: AgentState) -> AgentState:
     raw_body = extract_body(msg)
     clean_body = clean_email_body(raw_body)
 
-    # Attachments (now dict format)
-    attachments = extract_attachments(msg)
+    # Attachments — convert raw dicts to Attachment objects
+    raw_attachments = extract_attachments(msg)
+    attachments = [
+        Attachment(
+            filename=a["filename"],
+            content_type=a["content_type"]
+        )
+        for a in raw_attachments
+    ]
 
     # Update state
     state.update({

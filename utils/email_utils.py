@@ -53,8 +53,9 @@ def extract_attachments(msg) -> List[Dict]:
 
         if "attachment" in disposition:
             attachments.append({
-                "filename": part.get_filename(),
+                "filename":     part.get_filename() or "unnamed",
                 "content_type": part.get_content_type(),
+                "data":         part.get_payload(decode=True),  # raw bytes for upload
             })
 
     return attachments

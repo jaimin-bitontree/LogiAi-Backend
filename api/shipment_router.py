@@ -49,6 +49,9 @@ async def store_state(payload: StoreStateRequest):
         messages=[message],
         message_ids=payload.message_ids or [],
         last_message_id=payload.last_message_id,
+        translated_body=payload.translated_body,
+        translated_subject=payload.translated_subject,
+        language_metadata=payload.language_metadata,
     )
     await create_shipment(shipment)
     return StoreStateResponse(request_id=payload.request_id, status="NEW")

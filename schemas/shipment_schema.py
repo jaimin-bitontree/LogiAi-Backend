@@ -12,6 +12,9 @@ class StoreStateRequest(BaseModel):
     body: str = ""
     message_ids: Optional[List[str]] = []
     attachments: Optional[List] = []
+    translated_body: Optional[str] = None
+    translated_subject: Optional[str] = None
+    language_metadata: Optional[dict] = None
 
 
 class StoreStateResponse(BaseModel):

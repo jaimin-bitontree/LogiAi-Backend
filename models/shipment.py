@@ -8,9 +8,9 @@ from datetime import datetime
 
 
 class Attachment(BaseModel):
-    filename: Optional[str] = None
-    content_type: Optional[str] = None
-    url: Optional[str] = None
+    filename:     str
+    content_type: str
+    url:          Optional[str] = None   # set after upload
 
 
 class Message(BaseModel):

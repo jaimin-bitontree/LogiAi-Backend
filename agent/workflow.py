@@ -4,18 +4,19 @@ from agent.nodes.parse_node import parser_node
 from agent.nodes.language_node import language_node
 from agent.nodes.intent_node import intent_node
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
-
+from agent.nodes.reqid_generator_node import generate_reqid
 
 builder = StateGraph(AgentState)
 
 builder.add_node("parser",   parser_node)
 builder.add_node("language", language_node)
 builder.add_node("intent",   intent_node)
+builder.add_node("reqid", generate_reqid)
 
 builder.add_edge(START,      "parser")
 builder.add_edge("parser",   "language")
-builder.add_edge("language", "intent")
-builder.add_edge("intent",   END)
+builder.add_edge("language","reqid")
+builder.add_edge("reqid", END)
 
 graph = builder.compile()
 

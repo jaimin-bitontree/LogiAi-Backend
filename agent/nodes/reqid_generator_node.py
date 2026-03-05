@@ -16,14 +16,15 @@ logger = logging.getLogger(__name__)
 
 def _hydrate_state(state: AgentState, shipment: Shipment) -> AgentState:
     """Copy shipment fields into agent state."""
-    state["request_id"]      = shipment.request_id
-    state["status"]          = shipment.status
-    state["intent"]          = shipment.intent
-    state["message_ids"]     = shipment.message_ids
-    state["attachments"]     = shipment.attachments
-    state["last_message_id"] = shipment.last_message_id
-    # Note: thread_id and conversation_id in state are what the parser 
-    # extracted for the current incoming email. We don't overwrite them here.
+    state["request_id"]         = shipment.request_id
+    state["status"]             = shipment.status
+    state["intent"]             = shipment.intent
+    state["message_ids"]        = shipment.message_ids
+    state["attachments"]        = shipment.attachments
+    state["last_message_id"]    = shipment.last_message_id
+    state["translated_body"]    = shipment.translated_body
+    state["translated_subject"] = shipment.translated_subject
+    state["language_metadata"]  = shipment.language_metadata
     return state
 
 
@@ -96,13 +97,15 @@ async def generate_reqid(state: AgentState) -> AgentState:
     state["request_id"] = new_id
     state["status"]     = "NEW"
     
-    # Create the new shipment record in DB
     new_shipment = Shipment(
         request_id=new_id,
         thread_id=current_message_id, # This is the "head" / latest message for next lookup
         customer_email=customer_email,
         subject=state.get("subject"),
         body=state.get("body", ""),
+        translated_body=state.get("translated_body", ""),
+        translated_subject=state.get("translated_subject", ""),
+        language_metadata=state.get("language_metadata"),
         status="NEW",
         message_ids=[current_message_id] if current_message_id else [],
         attachments=state.get("attachments", []),

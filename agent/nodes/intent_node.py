@@ -8,8 +8,9 @@ from groq import Groq
 from pydantic import BaseModel
 from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from agent.state import AgentState
+from config import settings
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+client = Groq(api_key=settings.GROQ_API_KEY)
 
 
 # ===================================================
@@ -129,7 +130,7 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=settings.LANGUAGE_TRANSLATE_MODEL,
             messages=[
                 {"role": "system", "content": INTENT_SYSTEM_PROMPT},
                 {

@@ -1,5 +1,15 @@
+import email
 import re
 from typing import List, Dict
+
+
+def extract_message_id(raw_email: bytes) -> str | None:
+    """Parse the Message-ID header from raw RFC822 email bytes.
+    Strips angle brackets to match the format stored in DB by parse_node.
+    """
+    msg = email.message_from_bytes(raw_email)
+    raw_id = msg.get("Message-ID", "").strip().strip("<>")
+    return raw_id or None
 
 
 def extract_email_address(raw: str) -> str:
@@ -49,13 +59,23 @@ def extract_attachments(msg) -> List[Dict]:
     attachments = []
 
     for part in msg.walk():
+        content_type = part.get_content_type()
         disposition = str(part.get("Content-Disposition", ""))
+        filename = part.get_filename()
 
-        if "attachment" in disposition:
-            attachments.append({
-                "filename":     part.get_filename() or "unnamed",
-                "content_type": part.get_content_type(),
-                "data":         part.get_payload(decode=True),  # raw bytes for upload
-            })
+        # Many PDFs are marked as "inline" or have no disposition but are application/pdf
+        is_attachment = "attachment" in disposition
+        is_pdf = content_type == "application/pdf"
+
+        if is_attachment or is_pdf:
+            # Fallback for filename if get_filename() is None (common for some clients)
+            if not filename and is_pdf:
+                filename = f"document_{len(attachments) + 1}.pdf"
+            
+            if filename:
+                attachments.append({
+                    "filename": filename,
+                    "content_type": content_type,
+                })
 
     return attachments

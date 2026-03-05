@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from config import settings
 from db.client import connect_db, close_db
 from utils.poller import start_poller, stop_poller
+from api.shipment_router import router as shipment_router
 
 
 @asynccontextmanager
@@ -26,6 +27,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(shipment_router)
 
 
 @app.get("/health")

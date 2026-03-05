@@ -53,7 +53,9 @@ def parser_node(state: AgentState) -> AgentState:
     # Update state
     state.update({
         "message_ids": message_ids,
-        "thread_id": thread_id,
+        "last_message_id": message_id,
+        "thread_id": message_id,
+        "conversation_id": thread_id,
         "customer_email": customer_email,
         "subject": subject,
         "body": clean_body,

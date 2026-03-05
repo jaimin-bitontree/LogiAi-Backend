@@ -2,6 +2,16 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Literal
 from datetime import datetime
 
+# ============================================================
+# ATTACHMENT MODEL
+# ============================================================
+
+class Attachment(BaseModel):
+    filename:     str
+    content_type: str
+    url:          Optional[str] = None   # set after upload
+
+
 class Message(BaseModel):
     message_id: str
     sender_email: str
@@ -9,7 +19,7 @@ class Message(BaseModel):
     direction: Literal["incoming", "outgoing"]
     subject: Optional[str] = None
     body: str
-    attachments: Dict = Field(default_factory=dict)
+    attachments: List[Attachment] = Field(default_factory=list)
     received_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -27,6 +37,7 @@ class LanguageMetadata(BaseModel):
     detected_language: Optional[str] = None
     confidence: Optional[float] = None
     translated_to_english: bool = False
+    subject_translated_to_english: bool = False
 
 # ============================================================
 # VALIDATION RESULT MODEL
@@ -42,15 +53,16 @@ class Shipment(BaseModel):
     thread_id           :   Optional[str] = None
     customer_email:    str
     subject:           Optional[str] = None
-
+    body:str
     status:            str  = "NEW"
     intent:            Optional[str] = None
-
+    translated_body:str
+    translated_subject:str
     language_metadata: LanguageMetadata  = Field(default_factory=LanguageMetadata)
     request_data:      Dict              = {}
     validation_result: ValidationResult  = Field(default_factory=ValidationResult)
     pricing_details:   List[PricingSchema]       = []
-    attachments:       Dict       = {}
+    attachments:       List[Attachment] = []
 
     messages:          List[Message] = []
     message_ids:       List[str]  = []

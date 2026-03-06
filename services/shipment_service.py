@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from db.client import get_db
 from models.shipment import Shipment
 
@@ -23,3 +23,26 @@ async def find_latest_by_email(customer_email: str) -> Optional[Shipment]:
         sort=[("created_at", -1)]
     )
     return Shipment(**doc) if doc else None
+
+async def list_shipments(
+    status: Optional[str] = None, 
+    page: int = 1, 
+    page_size: int = 10
+) -> List[Shipment]:
+    """
+    Fetch shipments with optional status filtering and pagination.
+    Ordered by creation date (newest first).
+    """
+    db = get_db()
+    query = {}
+    
+    if status:
+        query["status"] = status
+        
+    # Calculate how many records to skip
+    skip = (page - 1) * page_size
+    
+    cursor = db.shipments.find(query).sort("created_at", -1).skip(skip).limit(page_size)
+    docs = await cursor.to_list(length=page_size)
+    
+    return [Shipment(**doc) for doc in docs]

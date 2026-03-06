@@ -76,23 +76,28 @@ async def missing_info_node(state: AgentState) -> dict:
         raise RuntimeError(f"DB pre-update failed for request_id={request_id}") from e
 
     # ── Step 4: Build email ───────────────────────────────────
-    body_html = build_email(
+    customer_html = build_email(
         email_type     = "missing_info",
         customer_name  = customer_name,
         request_id     = request_id,
         request_data   = request_data,
         missing_fields = missing_fields,
         all_fields     = REQUIRED_FIELDS + OPTIONAL_FIELDS,
+        next_steps     = [
+            "Review the missing fields listed above",
+            "Reply directly to this email with the required information",
+            "Once received, we will proceed with your quotation"
+        ]
     )
     email_subject = f"Re: {subject} — Additional Information Required"
 
     # ── Step 5: Send email ────────────────────────────────────
     try:
         sent_message_id = send_email(
-            to         = customer_email,
-            subject    = email_subject,
-            body_html  = body_html,
-            request_id = request_id
+            to=customer_email,
+            subject=email_subject,
+            body_html=customer_html,
+            request_id=request_id
         )
     except RuntimeError as e:
         logger.error(

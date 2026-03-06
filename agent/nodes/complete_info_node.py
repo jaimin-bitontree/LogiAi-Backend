@@ -78,6 +78,11 @@ async def complete_info_node(state: AgentState) -> dict:
             "We have received all the information needed for your shipment request. "
             "Our team is reviewing the details and you will receive a quotation shortly."
         ),
+        next_steps    = [
+            "Our team will review your request thoroughly",
+            "We will prepare a detailed pricing proposal",
+            "You will receive our response shortly"
+        ]
     )
     customer_subject = f"Re: {subject} — Request Received ✅"
 

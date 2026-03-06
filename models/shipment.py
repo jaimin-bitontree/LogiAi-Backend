@@ -6,6 +6,7 @@ from datetime import datetime
 # ATTACHMENT MODEL
 # ============================================================
 
+
 class Attachment(BaseModel):
     filename:     str
     content_type: str
@@ -33,6 +34,7 @@ class PricingSchema(BaseModel):
 # LANGUAGE METADATA MODEL
 # ============================================================
 
+
 class LanguageMetadata(BaseModel):
     detected_language: Optional[str] = None
     confidence: Optional[float] = None
@@ -43,31 +45,29 @@ class LanguageMetadata(BaseModel):
 # VALIDATION RESULT MODEL
 # ============================================================
 
+
 class ValidationResult(BaseModel):
     is_valid: bool = False
     missing_fields: List[str] = Field(default_factory=list)
 
 
 class Shipment(BaseModel):
-    request_id:        str
-    thread_id           :   Optional[str] = None
-    customer_email:    str
-    subject:           Optional[str] = None
-    body:str
-    status:            str  = "NEW"
-    intent:            Optional[str] = None
-    translated_body:str
-    translated_subject:str
-    language_metadata: LanguageMetadata  = Field(default_factory=LanguageMetadata)
-    request_data:      Dict              = {}
-    validation_result: ValidationResult  = Field(default_factory=ValidationResult)
-    pricing_details:   List[PricingSchema]       = []
-    attachments:       List[Attachment] = []
-
-    messages:          List[Message] = []
-    message_ids:       List[str]  = []
-
-    final_document:    Optional[str] = None
-
-    created_at:        datetime = Field(default_factory=datetime.utcnow)
-    updated_at:        datetime = Field(default_factory=datetime.utcnow)
+    request_id: str
+    thread_id: Optional[str] = None
+    customer_email: str
+    subject: Optional[str] = None
+    body: str
+    status: str = "NEW"
+    intent: Optional[str] = None
+    translated_body: str
+    translated_subject: str
+    language_metadata: LanguageMetadata = Field(default_factory=LanguageMetadata)
+    request_data: Dict = Field(default_factory=dict)
+    validation_result: ValidationResult = Field(default_factory=ValidationResult)
+    pricing_details: List[PricingSchema] = Field(default_factory=list)
+    attachments: List[Attachment] = Field(default_factory=list)
+    messages: List[Message] = Field(default_factory=list)
+    message_ids: List[str] = Field(default_factory=list)
+    final_document: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

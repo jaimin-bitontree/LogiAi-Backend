@@ -2,17 +2,20 @@ from langgraph.graph import StateGraph, START, END
 from agent.state import AgentState
 from agent.nodes.parse_node import parser_node
 from agent.nodes.language_node import language_node
+from agent.nodes.intent_node import intent_node
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
 
 
 builder = StateGraph(AgentState)
 
-builder.add_node("parser", parser_node)
+builder.add_node("parser",   parser_node)
 builder.add_node("language", language_node)
+builder.add_node("intent",   intent_node)
 
-builder.add_edge(START,    "parser")
+builder.add_edge(START,      "parser")
 builder.add_edge("parser",   "language")
-builder.add_edge("language", END)
+builder.add_edge("language", "intent")
+builder.add_edge("intent",   END)
 
 graph = builder.compile()
 
@@ -28,8 +31,8 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "body":             "",
         "translated_body":  "",
         "translated_subject":  "",
-        "status":           "NEW",      
-        "intent":           None,       
+        "status":           "NEW",  
+        "intent":           None,   
         "attachments":      [],
         "language_metadata":  LanguageMetadata(),
         "request_data":       {},
@@ -47,10 +50,10 @@ def run_workflow(raw_email: bytes) -> AgentState:
     """
     try:
         initial_state = create_initial_state(raw_email)
-        final_state   = None
+        final_state = None
 
         for step in graph.stream(initial_state):
-            node_name  = list(step.keys())[0]
+            node_name = list(step.keys())[0]
             node_state = step[node_name]
             print(f"\n✅ After node: [{node_name}]")
             print(node_state)
@@ -60,4 +63,3 @@ def run_workflow(raw_email: bytes) -> AgentState:
 
     except Exception as e:
         print(f"❌ Workflow execution failed: {e}")
-

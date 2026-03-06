@@ -16,28 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────
-# ASYNC HELPER  (safe in both sync and async contexts)
-# ─────────────────────────────────────────────────────────────
-
-def _run_async(coro):
-    """
-    Run an async coroutine safely regardless of the calling context.
-    - Sync context: uses asyncio.run()
-    - Async context: runs in thread to avoid 'loop already running' error
-    """
-    try:
-        asyncio.get_running_loop()
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            return pool.submit(asyncio.run, coro).result()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-
-# ─────────────────────────────────────────────────────────────
 # LANGGRAPH NODE
 # ─────────────────────────────────────────────────────────────
 
-def complete_info_node(state: AgentState) -> dict:
+async def complete_info_node(state: AgentState) -> dict:
     """
     Runs when validation_node reports all required fields are present.
 
@@ -70,7 +52,7 @@ def complete_info_node(state: AgentState) -> dict:
     state_with_status["status"] = "PRICING_PENDING"
 
     try:
-        _run_async(update_shipment_data(state_with_status))
+        await update_shipment_data(state_with_status)
     except Exception as e:
         logger.error(
             "[complete_info_node] DB pre-update failed for request_id=%s: %s",
@@ -126,13 +108,12 @@ def complete_info_node(state: AgentState) -> dict:
 
     # Push to DB — last_message_id NOT updated (customer email)
     try:
-        _run_async(push_message_log(
+        await push_message_log(
             request_id             = request_id,
             message                = customer_message_log.model_dump(),
             sent_message_id        = customer_msg_id,
             status                 = "PRICING_PENDING",
-            update_last_message_id = False,          # ← do NOT set last_message_id
-        ))
+        )
     except Exception as e:
         logger.error(
             "[complete_info_node] DB push failed for customer log request_id=%s: %s",
@@ -143,7 +124,7 @@ def complete_info_node(state: AgentState) -> dict:
     # ── Step 4: Send operator notification email ──────────────
     operator_html = build_email(
         email_type    = "pricing",         # shows all extracted fields (no price yet)
-        customer_name = customer_name,
+        customer_name = "Operator",        # address it to the Operator
         request_id    = request_id,
         request_data  = request_data,
         all_fields    = all_fields,
@@ -180,13 +161,12 @@ def complete_info_node(state: AgentState) -> dict:
     # So when operator replies, reqid_generator_node can match
     # their reply (In-Reply-To: operator_msg_id) → find this shipment
     try:
-        _run_async(push_message_log(
+        await push_message_log(
             request_id             = request_id,
             message                = operator_message_log.model_dump(),
             sent_message_id        = operator_msg_id,
             status                 = "PRICING_PENDING",
-            update_last_message_id = True,           # ← SET last_message_id here
-        ))
+        )
     except Exception as e:
         logger.error(
             "[complete_info_node] DB push failed for operator log request_id=%s: %s. "

@@ -16,31 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────
-# ASYNC HELPER  (safe in both sync and async contexts)
-# ─────────────────────────────────────────────────────────────
-
-def _run_async(coro):
-    """
-    Run an async coroutine safely regardless of the calling context.
-
-    - Sync context (run_in_executor thread): uses asyncio.run()
-    - Async context (async node): runs in a new thread to avoid
-      'event loop already running' RuntimeError
-    """
-    try:
-        asyncio.get_running_loop()
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            future = pool.submit(asyncio.run, coro)
-            return future.result()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-
-# ─────────────────────────────────────────────────────────────
 # LANGGRAPH NODE
 # ─────────────────────────────────────────────────────────────
 
-def missing_info_node(state: AgentState) -> dict:
+async def missing_info_node(state: AgentState) -> dict:
     """
     Runs when validation_node reports missing required fields.
 
@@ -88,7 +67,7 @@ def missing_info_node(state: AgentState) -> dict:
     state_with_status["status"] = "MISSING_INFO"
 
     try:
-        _run_async(update_shipment_data(state_with_status))
+        await update_shipment_data(state_with_status)
     except Exception as e:
         logger.error(
             "[missing_info_node] DB pre-update failed for request_id=%s: %s",
@@ -135,12 +114,12 @@ def missing_info_node(state: AgentState) -> dict:
 
     # ── Step 7: Push message log + update status in DB ────────
     try:
-        _run_async(push_message_log(
+        await push_message_log(
             request_id      = request_id,
             message         = message_log.model_dump(),
             sent_message_id = sent_message_id,
             status          = "MISSING_INFO"
-        ))
+        )
     except Exception as e:
         logger.error(
             "[missing_info_node] DB message log push failed for request_id=%s: %s. "

@@ -26,7 +26,14 @@ def _section_extracted_data(request_data: dict, all_fields: List[str]) -> str:
     Shows a table of all extracted (non-null) shipment fields.
     Fix #7 — html.escape() prevents HTML injection from LLM-extracted values.
     """
-    filled = {k: v for k, v in request_data.items() if k in all_fields and v is not None}
+    # request_data contains {"required": {...}, "optional": {...}}
+    # Flatten it first so we can loop over all fields cleanly
+    flat_data = {
+        **request_data.get("required", {}),
+        **request_data.get("optional", {})
+    }
+
+    filled = {k: v for k, v in flat_data.items() if k in all_fields and v is not None}
 
     if not filled:
         return ""
@@ -211,6 +218,28 @@ def build_email(
     # ── Wrap in base HTML layout ──────────────────────────────
     safe_name = escape(customer_name or "Customer")
     safe_id   = escape(request_id)
+    
+    # Optional greeting for operators
+    greeting = f'<p>Dear <strong>{safe_name}</strong>,</p>'
+    if email_type == "pricing" and not request_data:
+        # If request_data is None it implies it's going to the customer,
+        # but in this flow, pricing email with no pricing_details is sent to the operator.
+        # So we add a specific operator greeting if we pass a flag,
+        # or we just use the customer_name (which is "Operator" in some cases).
+        pass
+
+    # Operator specific instruction block
+    operator_instruction = ""
+    if email_type == "pricing" and not pricing_details:
+        operator_instruction = f"""
+        <div style="background:#fff3cd;padding:16px;border-left:4px solid #ffecb5;margin-bottom:20px;border-radius:4px;">
+            <h4 style="color:#856404;margin-top:0;margin-bottom:8px;">🔔 Action Required</h4>
+            <p style="color:#856404;margin:0;font-size:14px;">
+                Please review the extracted shipment details below and reply to this email with the pricing quotation. 
+                Format your reply clearly so the AI can extract the pricing information.
+            </p>
+        </div>
+        """
 
     return f"""
     <html>
@@ -218,10 +247,13 @@ def build_email(
                  max-width:660px;margin:auto;padding:28px;">
 
       <!-- Header -->
-      <div style="background:#2c3e50;padding:18px 24px;border-radius:6px 6px 0 0;">
+      <div style="background:#2c3e50;padding:18px 24px;border-radius:6px 6px 0 0;text-align:center;">
         <h1 style="color:#fff;margin:0;font-size:20px;">
           LogiAI — Shipment Management
         </h1>
+        <div style="margin-top:8px;display:inline-block;background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:12px;font-size:13px;color:#ecf0f1;font-family:monospace;">
+          #{safe_id}
+        </div>
       </div>
 
       <!-- Content -->
@@ -229,12 +261,13 @@ def build_email(
                   padding:24px;border-radius:0 0 6px 6px;">
 
         <p>Dear <strong>{safe_name}</strong>,</p>
+        
+        {operator_instruction}
 
         {body}
 
         <hr style="border:none;border-top:1px solid #eee;margin:28px 0;">
-        <p style="font-size:12px;color:#aaa;">
-          Reference ID: <strong>{safe_id}</strong> &nbsp;|&nbsp;
+        <p style="font-size:12px;color:#aaa;text-align:center;">
           Automated message from LogiAI.
         </p>
       </div>

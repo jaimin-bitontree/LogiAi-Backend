@@ -1,123 +1,46 @@
-import json
 import os
-from typing import Optional
-from dotenv import load_dotenv
-from groq import Groq
-from pydantic import ValidationError
 from agent.state import AgentState
-from schemas.extraction_schema import ExtractionSchema
-from core.constants import (
-    INCOTERMS,
-    PACKAGE_TYPES,
-    SHIPMENT_TYPES,
-    TRANSPORT_MODES,
-    CONTAINER_TYPES,
-    REQUIRED_FIELDS,
-    OPTIONAL_FIELDS,
-)
+from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import ValidationResult
-
-load_dotenv()
-
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-EXTRACTION_MODEL = os.environ.get("EXTRACTION_MODEL")
-
-# json format
-_JSON_FORMAT = json.dumps(
-    {field: None for field in ExtractionSchema.model_fields.keys()},
-    indent=2
-)
-
-# System prompt
-EXTRACTION_SYSTEM_PROMPT = f"""
-You are a logistics data extraction engine for LogiAI.
-
-Extract shipment information from emails.
-
-Required fields:
-{json.dumps(REQUIRED_FIELDS, indent=2)}
-
-Optional fields:
-{json.dumps(OPTIONAL_FIELDS, indent=2)}
-
-Allowed values:
-incoterm: {json.dumps(INCOTERMS)}
-package_type: {json.dumps(PACKAGE_TYPES)}
-shipment_type: {json.dumps(SHIPMENT_TYPES)}
-transport_mode: {json.dumps(TRANSPORT_MODES)}
-container_type: {json.dumps(CONTAINER_TYPES)}
-
-Rules:
-1. Extract only values explicitly mentioned.
-2. shipment_type = LCL/FCL/AIR
-3. container_type = container size (20' GP, 40' GP)
-4. quantity must be integer
-5. weights and dimensions must be float
-6. stackable/dangerous must be boolean
-7. unknown fields → null
-
-Return ONLY JSON in this format:
-
-{_JSON_FORMAT}
-""".strip()
+from services.extraction_service import extract_fields, extract_missing_fields
 
 
-# LLM extraction function
-def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
-
-    subject = (email_subject or "").strip()
-    body = (email_body or "").strip()
-
-    if not subject and not body:
-        raise ValueError("Email subject and body are empty")
-
-    email_content = f"Subject: {subject}\n\nBody:\n{body}"
-
-    try:
-
-        response = client.chat.completions.create(
-            model=EXTRACTION_MODEL,
-            messages=[
-                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Extract logistics shipment data:\n\n{email_content}",
-                },
-            ],
-            temperature=0.0,
-            max_tokens=1024,
-        )
-
-        raw_text = response.choices[0].message.content.strip()
-        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-
-        parsed = json.loads(raw_text)
-
-        return ExtractionSchema(**parsed)
-
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON from LLM: {e}")
-
-    except ValidationError as e:
-        raise ValueError(f"Schema validation error: {e}")
-
-    except Exception as e:
-        raise RuntimeError(f"Extraction failed: {e}")
-
-    finally:
-        print(f"[extraction_node] extract_fields() | subject: '{subject[:50]}'")
+def _compute_validation(required_data: dict) -> ValidationResult:
+    """
+    Checks which required fields are still None.
+    Saves them into ValidationResult.missing_fields.
+    """
+    missing_fields = [
+        field for field in REQUIRED_FIELDS
+        if required_data.get(field) is None
+    ]
+    return ValidationResult(
+        is_valid=len(missing_fields) == 0,
+        missing_fields=missing_fields,
+    )
 
 
 # node function
+
 def extraction_node(state: AgentState) -> dict:
     """
-    Handles:
-    - new_request
-    - missing_information
+    Handles two intents:
+
+    new_request:
+        - Calls LLM to extract ALL fields from the email
+        - Splits into required and optional
+        - Computes ValidationResult — missing_fields saved to state
+        - Returns request_data, validation_result, status
+
+    missing_information:
+        - Reads missing_fields from state (saved from DB on first extraction)
+        - Calls LLM with ONLY those missing fields — focused extraction
+        - Merges new values into existing request_data from state
+        - Re-computes ValidationResult
+        - missing_fields now only contains STILL missing fields
+        - Returns updated request_data, validation_result, status
     """
-
     intent = state.get("intent")
-
     subject = state.get("translated_subject", "")
     body = state.get("translated_body", "")
 
@@ -125,19 +48,18 @@ def extraction_node(state: AgentState) -> dict:
     print(f"[extraction_node] Intent: {intent}")
     print("=" * 60)
 
-    # new request — extract all fields and validate
+    # ── new_request ──────────────────────────────────────────
     if intent == "new_request":
-
         try:
-
+            # Step 1 — Extract ALL fields via LLM
             schema = extract_fields(subject, body)
             schema_dict = schema.model_dump()
 
+            # Step 2 — Split into required and optional
             required_data = {
                 field: schema_dict.get(field)
                 for field in REQUIRED_FIELDS
             }
-
             optional_data = {
                 field: schema_dict.get(field)
                 for field in OPTIONAL_FIELDS
@@ -149,113 +71,108 @@ def extraction_node(state: AgentState) -> dict:
                 "optional": optional_data,
             }
 
-            missing_fields = [
-                f for f in REQUIRED_FIELDS
-                if required_data.get(f) is None
-            ]
+            # Step 3 — Compute ValidationResult
+            # missing_fields saved into ValidationResult.missing_fields → goes to DB
+            validation_result = _compute_validation(required_data)
 
-            validation_result = ValidationResult(
-                is_valid=len(missing_fields) == 0,
-                missing_fields=missing_fields,
-            )
-
-            _print_extraction_result(subject, schema, validation_result)
+            _print_extraction_result(subject, schema_dict, validation_result)
 
             return {
-                "request_data": request_data,
+                "request_data":      request_data,
                 "validation_result": validation_result,
-                "status": "COMPLETED" if validation_result.is_valid else "MISSING_INFO",
+                "status": "NEW" if validation_result.is_valid else "MISSING_INFO",
             }
 
         except Exception as e:
-
             print(f"[extraction_node] ❌ Extraction error: {e}")
+            return {"status": "ERROR"}
 
-            return {
-                "status": "ERROR"
+    # ── missing_information ──────────────────────────────────
+    elif intent == "missing_information":
+        try:
+            # Step 1 — Read existing request_data from state
+            # Keep all previously extracted values — don't lose them
+            existing = state.get("request_data", {})
+            required_data = dict(existing.get("required", {
+                field: None for field in REQUIRED_FIELDS
+            }))
+            optional_data = dict(existing.get("optional", {}))
+
+            # Step 2 — Read missing_fields from state
+            # These were saved to DB on first extraction — use them as the target
+            prev_validation = state.get("validation_result")
+            missing_fields = (
+                prev_validation.missing_fields
+                if prev_validation else list(REQUIRED_FIELDS)
+            )
+
+            print(f"[extraction_node] Extracting only missing fields: {missing_fields}")
+
+            # Step 3 — Extract ONLY the missing fields from the reply email
+            # Focused extraction — LLM only looks for what's actually missing
+            newly_extracted = extract_missing_fields(subject, body, missing_fields)
+
+            print(f"[extraction_node] Newly extracted: {newly_extracted}")
+
+            # Step 4 — Merge new values into existing required and optional data
+            for field, value in newly_extracted.items():
+                if field in REQUIRED_FIELDS:
+                    required_data[field] = value
+                elif field in OPTIONAL_FIELDS:
+                    optional_data[field] = value
+
+            request_data = {
+                "required": required_data,
+                "optional": optional_data,
             }
 
-    # missing information — update state with any provided fields and re-validate
-    elif intent == "missing_information":
+            # Step 5 — Re-compute ValidationResult
+            # missing_fields now only contains STILL missing fields
+            validation_result = _compute_validation(required_data)
 
-        request_data = state.get("request_data", {})
-        required_data = request_data.get("required", {})
-        optional_data = request_data.get("optional", {})
+            print(f"[extraction_node] Still missing : {validation_result.missing_fields}")
+            print(f"[extraction_node] Complete      : {validation_result.is_valid}")
 
-        provided_fields = state.get("provided_fields", {})
+            return {
+                "request_data":      request_data,
+                "validation_result": validation_result,
+                "status": "NEW" if validation_result.is_valid else "MISSING_INFO",
+            }
 
-        print(f"[extraction_node] Updating fields: {provided_fields}")
+        except Exception as e:
+            print(f"[extraction_node] ❌ Update error: {e}")
+            return {"status": "ERROR"}
 
-        for field, value in provided_fields.items():
-
-            if field in required_data:
-                required_data[field] = value
-
-            elif field in OPTIONAL_FIELDS:
-                optional_data[field] = value
-
-        request_data = {
-            "required": required_data,
-            "optional": optional_data,
-        }
-
-        missing_fields = [
-            f for f in REQUIRED_FIELDS
-            if required_data.get(f) is None
-        ]
-
-        validation_result = ValidationResult(
-            is_valid=len(missing_fields) == 0,
-            missing_fields=missing_fields,
-        )
-
-        print("\n[extraction_node] STATE UPDATE")
-        print(f"Missing fields: {missing_fields}")
-        print(f"Completed: {validation_result.is_valid}")
-
-        return {
-            "request_data": request_data,
-            "validation_result": validation_result,
-            "status": "COMPLETED" if validation_result.is_valid else "MISSING_INFO",
-        }
-    # unknown intent — skip extraction
+    # ── unknown intent ───────────────────────────────────────
     else:
-        print("[extraction_node] Unknown intent")
-        return {"status": "SKIPPED"}
+        print("[extraction_node] Skipping — intent not handled here.")
+        return {}
 
 
-# console extraction result
+# console results
+
 def _print_extraction_result(
     subject: str,
-    schema: ExtractionSchema,
+    schema_dict: dict,
     validation_result: ValidationResult,
-):
-
+) -> None:
     print("\n" + "=" * 60)
     print("[extraction_node] RESULT")
-    print(f"Subject: {subject.strip()}")
-    print(f"Status : {'COMPLETED' if validation_result.is_valid else 'MISSING_INFO'}")
+    print(f"  Subject : {subject.strip() or '(no subject)'}")
+    print(f"  Status  : {'✅ Complete' if validation_result.is_valid else '⚠️  Missing fields'}")
 
-    print("\nRequired Fields")
-
+    print("\n  ── Required fields ──")
     for field in REQUIRED_FIELDS:
-
-        value = getattr(schema, field, None)
+        value = schema_dict.get(field)
         status = "✅" if value is not None else "❌"
+        print(f"    {status} {field}: {value}")
 
-        print(f"{status} {field}: {value}")
-
-    print("\nOptional Fields")
-
+    print("\n  ── Optional fields ──")
     for field in OPTIONAL_FIELDS:
-
-        value = getattr(schema, field, None)
+        value = schema_dict.get(field)
         status = "✅" if value is not None else "➖"
-
-        print(f"{status} {field}: {value}")
+        print(f"    {status} {field}: {value}")
 
     if validation_result.missing_fields:
-        print("\nMissing required fields:")
-        print(validation_result.missing_fields)
-
+        print(f"\n  Missing required: {validation_result.missing_fields}")
     print("=" * 60)

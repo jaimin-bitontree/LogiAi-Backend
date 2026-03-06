@@ -4,6 +4,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from datetime import datetime
 from services.gmail_receiver import fetch_unread_emails
+from services.shipment_service import message_id_already_processed
+from utils.email_utils import extract_message_id
 from agent.workflow import run_workflow
 
 
@@ -27,11 +29,17 @@ async def job():
         for raw in raw_emails:
 
             try:
-                result = await loop.run_in_executor(
-                    None, run_workflow, raw
-                )
+                # 🔹 Dedup check: skip if Message-ID already in DB
+                message_id = extract_message_id(raw)
+                if message_id and await message_id_already_processed(message_id):
+                    print(f"⏭️  Skipping already-processed email: {message_id}")
+                    continue
 
-                print(f"✅ Processed: {result.get('subject')}")
+                result = await run_workflow(raw)
+                if result:
+                    print(f"✅ Processed: {result.get('subject')}")
+                else:
+                    print("⚠️  No result from workflow")
 
             except Exception as e:
                 print(f"❌ Failed to process email: {e}")
@@ -56,3 +64,4 @@ def stop_poller():
     if scheduler.running:
         scheduler.shutdown()
         print("🛑 Gmail Poller stopped")
+

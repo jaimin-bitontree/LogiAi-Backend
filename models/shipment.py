@@ -1,6 +1,13 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Literal
 from datetime import datetime
+from core.constants import EmailIntent
+
+
+class IntentResult(BaseModel):
+    intent: EmailIntent
+    request_id: Optional[str] = None
+
 
 # ============================================================
 # ATTACHMENT MODEL
@@ -10,8 +17,7 @@ from datetime import datetime
 class Attachment(BaseModel):
     filename:     str
     content_type: str
-    url:          Optional[str] = None   # set after upload
-
+    url:          Optional[str] = None
 
 class Message(BaseModel):
     message_id: str
@@ -54,6 +60,8 @@ class ValidationResult(BaseModel):
 class Shipment(BaseModel):
     request_id: str
     thread_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    last_message_id: Optional[str] = None
     customer_email: str
     subject: Optional[str] = None
     body: str

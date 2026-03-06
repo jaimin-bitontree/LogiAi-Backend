@@ -1,5 +1,6 @@
 from email import policy
 from email.parser import BytesParser
+from models.shipment import Attachment
 from utils.email_utils import (
     extract_email_address,
     extract_body,
@@ -41,10 +42,20 @@ def parser_node(state: AgentState) -> AgentState:
         for a in raw_attachments
     ]
 
+    message_ids = state.get("message_ids")
+    if not isinstance(message_ids, list):
+        message_ids = []
+    
+    if message_id and message_id not in message_ids:
+        message_ids.append(message_id)
+        print(message_ids)
+
     # Update state
     state.update({
-        "message_id": message_id,
-        "thread_id": thread_id,
+        "message_ids": message_ids,
+        "last_message_id": message_id,
+        "thread_id": message_id,
+        "conversation_id": thread_id,
         "customer_email": customer_email,
         "subject": subject,
         "body": clean_body,

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     LANGUAGE_DETECT_MODEL:         str   = "llama-3.1-8b-instant"
     LANGUAGE_TRANSLATE_MODEL:      str   = "llama-3.3-70b-versatile"
 
+    API_BASE_URL:      str = "http://localhost:8000"
 
     class Config:
         env_file = ".env"

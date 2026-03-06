@@ -55,8 +55,10 @@ def fetch_unread_emails() -> list[bytes]:
                 print(f"⚠️ Failed to fetch email ID {email_id}")
                 continue
 
-            if data and len(data) > 0 and data[0] and len(data[0]) > 1:
+            if data and data[0]:
                 raw_email = data[0][1]
+                if not raw_email:
+                    continue
             else:
                 print("❌ No email data found, skipping...")
                 continue

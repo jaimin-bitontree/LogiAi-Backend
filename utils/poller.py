@@ -25,7 +25,7 @@ async def job():
 
         print(f"📬 Found {len(raw_emails)} emails")
 
-        # 🔹 Step 2: Process each email through LangGraph
+        # 🔹 Step 2: Process each email through LangGraph (run_workflow is now async)
         for raw in raw_emails:
 
             try:

@@ -75,3 +75,12 @@ async def update_shipment_thread_id(request_id: str, new_thread_id: str, attachm
 
     await db.shipments.update_one({"request_id": request_id}, update_ops)
 
+async def find_latest_by_email(customer_email: str) -> Optional[Shipment]:
+    """Find the most recent shipment for a given customer email."""
+    db = get_db()
+    # Sort by created_at descending to get the latest one
+    doc = await db.shipments.find_one(
+        {"customer_email": customer_email},
+        sort=[("created_at", -1)]
+    )
+    return Shipment(**doc) if doc else None

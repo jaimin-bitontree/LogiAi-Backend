@@ -8,6 +8,10 @@ from agent.nodes.extraction_node import extraction_node
 from agent.nodes.missing_info_node import missing_info_node
 from agent.nodes.complete_info_node import complete_info_node
 from agent.nodes.reqid_generator_node import generate_reqid
+from agent.nodes.status_node import status_handler
+from models.shipment import LanguageMetadata, ValidationResult, Attachment
+from core.constants import EmailIntent
+
 
 builder = StateGraph(AgentState)
 
@@ -18,6 +22,24 @@ builder.add_node("reqid",    generate_reqid)
 builder.add_node("extraction", extraction_node)
 builder.add_node("missing_info", missing_info_node)
 builder.add_node("complete_info", complete_info_node)
+builder.add_node("status",   status_handler)
+
+
+def router(state: AgentState):
+    """
+    Decide next node based on intent.
+    """
+    intent = state.get("intent")
+    
+    if intent == EmailIntent.STATUS_INQUIRY:
+        return "status"
+    
+    if intent in [EmailIntent.NEW_REQUEST, EmailIntent.MISSING_INFORMATION]:
+        return "reqid"
+    
+    # Defaults to END for other intents (or could default to reqid/status)
+    return END
+
 
 builder.add_edge(START,      "parser")
 builder.add_edge("parser",   "language")
@@ -53,12 +75,21 @@ builder.add_conditional_edges(
     {
         "complete_info": "complete_info",
         "missing_info":  "missing_info",
+    }
+)
+builder.add_conditional_edges(
+    "intent",
+    router,
+    {
+        "status": "status",
+        "reqid":  "reqid",
         END: END
     }
 )
 
-builder.add_edge("missing_info",  END)
+builder.add_edge("missing_info",  "complete_info")
 builder.add_edge("complete_info", END)
+builder.add_edge("status", END)
 
 graph = builder.compile()
 
@@ -90,8 +121,7 @@ def create_initial_state(raw_email: bytes) -> AgentState:
 
 async def run_workflow(raw_email: bytes) -> AgentState:
     """
-    Create initial state and invoke graph.
-    Streams output so you can see state after each node.
+    Create initial state and invoke graph using astream (async).
     """
     try:
         initial_state = create_initial_state(raw_email)
@@ -101,7 +131,6 @@ async def run_workflow(raw_email: bytes) -> AgentState:
             node_name = list(step.keys())[0]
             node_state = step[node_name]
             print(f"\n✅ After node: [{node_name}]")
-            print(node_state)
             final_state = node_state
 
         return final_state
@@ -113,3 +142,4 @@ async def run_workflow(raw_email: bytes) -> AgentState:
         return result
     except Exception as e:
         print(f"❌ Workflow execution failed: {e}")
+        return None

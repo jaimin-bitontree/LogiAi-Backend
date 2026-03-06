@@ -1,3 +1,4 @@
+from typing import List
 from datetime import datetime
 from db.client import get_db
 from models.shipment import Shipment

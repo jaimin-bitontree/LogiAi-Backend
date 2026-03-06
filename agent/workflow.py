@@ -15,7 +15,8 @@ builder.add_node("reqid", generate_reqid)
 
 builder.add_edge(START,      "parser")
 builder.add_edge("parser",   "language")
-builder.add_edge("language","reqid")
+builder.add_edge("language","intent")
+builder.add_edge("intent","reqid")
 builder.add_edge("reqid", END)
 
 graph = builder.compile()
@@ -26,6 +27,8 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "raw_email": raw_email,
         "request_id":       "",
         "thread_id":        None,
+        "conversation_id":  None,
+        "last_message_id":  None,
         "customer_email":   "",
         "subject":          None,
         "message_ids":      [],         
@@ -53,7 +56,7 @@ async def run_workflow(raw_email: bytes) -> AgentState:
         initial_state = create_initial_state(raw_email)
         final_state = None
 
-        for step in graph.stream(initial_state):
+        async for step in graph.astream(initial_state):
             node_name = list(step.keys())[0]
             node_state = step[node_name]
             print(f"\n✅ After node: [{node_name}]")

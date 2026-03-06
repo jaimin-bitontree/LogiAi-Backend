@@ -1,13 +1,23 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Literal
 from datetime import datetime
+from core.constants import EmailIntent
+
+
+class IntentResult(BaseModel):
+    intent: EmailIntent
+    request_id: Optional[str] = None
+
 
 # ============================================================
 # ATTACHMENT MODEL
 # ============================================================
 
 
-
+class Attachment(BaseModel):
+    filename:     str
+    content_type: str
+    url:          Optional[str] = None
 
 class Message(BaseModel):
     message_id: str

@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     LANGUAGE_CONFIDENCE_THRESHOLD: float = 0.85
     LANGUAGE_DETECT_MODEL:         str   = "llama-3.1-8b-instant"
     LANGUAGE_TRANSLATE_MODEL:      str   = "llama-3.3-70b-versatile"
+    EXTRACTION_MODEL:              str   = "llama-3.3-70b-versatile"
+    SMTP_HOST:                     str   = "smtp.gmail.com"
+    SMTP_PORT:                     int   = 587
+    OPERATOR_EMAIL:                str   = ""
 
     API_BASE_URL:      str = "http://localhost:8000"
 

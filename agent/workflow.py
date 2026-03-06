@@ -4,6 +4,9 @@ from agent.nodes.parse_node import parser_node
 from agent.nodes.language_node import language_node
 from agent.nodes.intent_node import intent_node
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
+from agent.nodes.extraction_node import extraction_node
+from agent.nodes.missing_info_node import missing_info_node
+from agent.nodes.complete_info_node import complete_info_node
 from agent.nodes.reqid_generator_node import generate_reqid
 
 builder = StateGraph(AgentState)
@@ -11,13 +14,51 @@ builder = StateGraph(AgentState)
 builder.add_node("parser",   parser_node)
 builder.add_node("language", language_node)
 builder.add_node("intent",   intent_node)
-builder.add_node("reqid", generate_reqid)
+builder.add_node("reqid",    generate_reqid)
+builder.add_node("extraction", extraction_node)
+builder.add_node("missing_info", missing_info_node)
+builder.add_node("complete_info", complete_info_node)
 
 builder.add_edge(START,      "parser")
 builder.add_edge("parser",   "language")
-builder.add_edge("language","intent")
-builder.add_edge("intent","reqid")
-builder.add_edge("reqid", END)
+builder.add_edge("language", "intent")
+builder.add_edge("intent",   "reqid")
+builder.add_edge("reqid",    "extraction")
+
+def route_after_extraction(state: AgentState):
+    """Route based on whether all required fields were found."""
+    val_res = state.get("validation_result")
+    status = state.get("status")
+
+    # If extraction node caught an exception (like the Pydantic schema mismatch)
+    if status == "ERROR":
+        print("⚠️ [workflow] Routing to END because extraction_node reported status='ERROR'")
+        return END
+    
+    # If the email didn't trigger extraction, val_res remains default (is_valid=False, missing_fields=[])
+    if not val_res:
+        return END
+        
+    if val_res.is_valid:
+        return "complete_info"
+    elif val_res.missing_fields:
+        return "missing_info"
+    else:
+        # no missing fields, but not valid -> extraction was skipped
+        return END
+
+builder.add_conditional_edges(
+    "extraction", 
+    route_after_extraction,
+    {
+        "complete_info": "complete_info",
+        "missing_info":  "missing_info",
+        END: END
+    }
+)
+
+builder.add_edge("missing_info",  END)
+builder.add_edge("complete_info", END)
 
 graph = builder.compile()
 

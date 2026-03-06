@@ -80,7 +80,6 @@ def extraction_node(state: AgentState) -> dict:
             return {
                 "request_data":      request_data,
                 "validation_result": validation_result,
-                "status": "NEW" if validation_result.is_valid else "MISSING_INFO",
             }
 
         except Exception as e:
@@ -136,7 +135,6 @@ def extraction_node(state: AgentState) -> dict:
             return {
                 "request_data":      request_data,
                 "validation_result": validation_result,
-                "status": "NEW" if validation_result.is_valid else "MISSING_INFO",
             }
 
         except Exception as e:

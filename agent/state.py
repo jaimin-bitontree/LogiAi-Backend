@@ -21,9 +21,9 @@ class AgentState(TypedDict):
     body:              str
     translated_body:   str
     translated_subject: str
-    last_message_id:   Optional[str]
-    status:            str
-    intent:            Optional[str]
+    status: str
+    intent: Optional[str]
+    last_message_id: Optional[str]
 
     # ── Language ──────────────────────────────────────────
     language_metadata: LanguageMetadata

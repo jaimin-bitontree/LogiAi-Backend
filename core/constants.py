@@ -84,14 +84,14 @@ OPTIONAL_FIELDS = [
 INCOTERMS = [
     "CFR", "CIF", "CIP", "CPT",
     "DAP", "DDP", "DPU",
-    "EXW", "FAS", "FCA"
+    "EXW", "FAS", "FCA","FOB"
 ]
 
 PACKAGE_TYPES = [
     "Bag", "Bulk Bag", "Bundle", "Bottle",
     "Box", "Basket", "Container", "Carton",
     "Envelope", "Mix", "Piece", "Package",
-    "Pallet", "Tube", "Unit", "PCS"
+    "Pallets", "Tube", "Unit", "PCS"
 ]
 
 SHIPMENT_TYPES = [

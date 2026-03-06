@@ -21,4 +21,5 @@ async def status_handler(state: AgentState) -> AgentState:
 
     if status_result["found"]:
         #sent status mail
+        #write mail logic here 
         return state

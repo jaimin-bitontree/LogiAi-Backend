@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     IMAP_PORT:         int
     GROQ_API_KEY:                  str
     LANGUAGE_CONFIDENCE_THRESHOLD: float = 0.85
-    LANGUAGE_DETECT_MODEL:         str   = "llama-3.1-8b-instant"
-    LANGUAGE_TRANSLATE_MODEL:      str   = "llama-3.3-70b-versatile"
+    LANGUAGE_DETECT_MODEL:         str   
+    LANGUAGE_TRANSLATE_MODEL:      str
 
 
     class Config:

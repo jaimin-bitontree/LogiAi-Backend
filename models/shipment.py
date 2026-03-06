@@ -76,6 +76,7 @@ class Shipment(BaseModel):
     attachments: List[Attachment] = Field(default_factory=list)
     messages: List[Message] = Field(default_factory=list)
     message_ids: List[str] = Field(default_factory=list)
+    last_message_id: Optional[str] = None
     final_document: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

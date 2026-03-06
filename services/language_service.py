@@ -4,8 +4,7 @@ from config import settings
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 
-DETECT_MODEL    = settings.LANGUAGE_DETECT_MODEL
-TRANSLATE_MODEL = settings.LANGUAGE_TRANSLATE_MODEL
+
 
 
 def detect_language(text: str) -> tuple[str, float]:
@@ -30,7 +29,7 @@ def detect_language(text: str) -> tuple[str, float]:
 def detect_language_with_llm(text: str) -> tuple[str, float]:
     try:
         response = client.chat.completions.create(
-            model=DETECT_MODEL,
+            model=settings.LANGUAGE_DETECT_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -54,7 +53,7 @@ def detect_language_with_llm(text: str) -> tuple[str, float]:
 def translate_with_llm(text: str) -> str:
     try:
         response = client.chat.completions.create(
-            model=TRANSLATE_MODEL,
+            model=settings.LANGUAGE_TRANSLATE_MODEL,
             messages=[
                 {
                     "role": "system",

@@ -7,10 +7,6 @@ from datetime import datetime
 # ============================================================
 
 
-class Attachment(BaseModel):
-    filename:     str
-    content_type: str
-    url:          Optional[str] = None   # set after upload
 
 
 class Message(BaseModel):

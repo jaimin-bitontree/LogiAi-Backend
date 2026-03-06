@@ -27,9 +27,7 @@ async def job():
         for raw in raw_emails:
 
             try:
-                result = await loop.run_in_executor(
-                    None, run_workflow, raw
-                )
+                result = await run_workflow(raw)
 
                 print(f"✅ Processed: {result.get('subject')}")
 

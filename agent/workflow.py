@@ -43,7 +43,7 @@ def create_initial_state(raw_email: bytes) -> AgentState:
     }
 
 
-def run_workflow(raw_email: bytes) -> AgentState:
+async def run_workflow(raw_email: bytes) -> AgentState:
     """
     Create initial state and invoke graph.
     Streams output so you can see state after each node.
@@ -61,5 +61,10 @@ def run_workflow(raw_email: bytes) -> AgentState:
 
         return final_state
 
+        if result:
+            print(f"✅ Processed: {result.get('subject')}")
+        else:
+            print("⚠️ Workflow failed, result is None")
+        return result
     except Exception as e:
         print(f"❌ Workflow execution failed: {e}")

@@ -15,16 +15,13 @@ logger = logging.getLogger(__name__)
 
 
 def _hydrate_state(state: AgentState, shipment: Shipment) -> AgentState:
-    """Copy shipment fields into agent state."""
-    state["request_id"]         = shipment.request_id
-    state["status"]             = shipment.status
-    state["intent"]             = shipment.intent
-    state["message_ids"]        = shipment.message_ids
-    state["attachments"]        = shipment.attachments
-    state["last_message_id"]    = shipment.last_message_id
-    state["translated_body"]    = shipment.translated_body
-    state["translated_subject"] = shipment.translated_subject
-    state["language_metadata"]  = shipment.language_metadata
+    """Copy shipment fields into agent state, skipping null values."""
+    shipment_dict = shipment.model_dump()
+    for key, value in shipment_dict.items():
+        if key in state and value is not None:
+             state[key] = value
+
+    print(state)
     return state
 
 

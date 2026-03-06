@@ -60,6 +60,8 @@ class ValidationResult(BaseModel):
 class Shipment(BaseModel):
     request_id: str
     thread_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    last_message_id: Optional[str] = None
     customer_email: str
     subject: Optional[str] = None
     body: str

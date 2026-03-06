@@ -23,15 +23,17 @@ async def job():
 
         print(f"📬 Found {len(raw_emails)} emails")
 
-        # 🔹 Step 2: Process each email through LangGraph
+        # 🔹 Step 2: Process each email through LangGraph (run_workflow is now async)
         for raw in raw_emails:
 
             try:
-                result = await loop.run_in_executor(
-                    None, run_workflow, raw
-                )
+                # IMPORTANT: run_workflow is now an async function
+                result = await run_workflow(raw)
 
-                print(f"✅ Processed: {result.get('subject')}")
+                if result:
+                    print(f"✅ Processed: {result.get('subject')}")
+                else:
+                    print("⚠️ Workflow returned no state")
 
             except Exception as e:
                 print(f"❌ Failed to process email: {e}")

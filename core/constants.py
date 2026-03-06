@@ -1,3 +1,17 @@
+from enum import Enum
+
+# ===============================
+# EMAIL INTENT ENUM
+# ===============================
+
+class EmailIntent(str, Enum):
+    NEW_REQUEST = "new_request"
+    STATUS_INQUIRY = "status_inquiry"
+    CONFIRMATION = "confirmation"
+    CANCELLATION = "cancellation"
+    MISSING_INFORMATION = "missing_information"
+
+
 # ===============================
 # STATUS ENUM
 # ===============================

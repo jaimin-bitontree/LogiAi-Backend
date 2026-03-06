@@ -43,12 +43,14 @@ def parser_node(state: AgentState) -> AgentState:
 
     # Update state
     state.update({
-        "message_id": message_id,
-        "thread_id": thread_id,
-        "customer_email": customer_email,
-        "subject": subject,
-        "body": clean_body,
-        "attachments": attachments,
+        "message_ids":      [message_id] if message_id else [],
+        "last_message_id":  message_id,
+        "thread_id":        message_id, # Current message is the head of the thread
+        "conversation_id":  thread_id,   # Parent message is the conversation link
+        "customer_email":    customer_email,
+        "subject":          subject,
+        "body":             clean_body,
+        "attachments":       attachments,
     })
 
     return state

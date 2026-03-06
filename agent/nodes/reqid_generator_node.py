@@ -103,6 +103,7 @@ async def generate_reqid(state: AgentState) -> AgentState:
         translated_body=state.get("translated_body", ""),
         translated_subject=state.get("translated_subject", ""),
         language_metadata=state.get("language_metadata"),
+        intent=state.get("intent"),
         status="NEW",
         message_ids=[current_message_id] if current_message_id else [],
         attachments=state.get("attachments", []),

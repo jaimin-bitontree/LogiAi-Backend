@@ -60,7 +60,7 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=settings.LANGUAGE_DETECT_MODEL,   # uses llama-3.1-8b-instant from config
             messages=[
                 {"role": "system", "content": INTENT_SYSTEM_PROMPT},
                 {

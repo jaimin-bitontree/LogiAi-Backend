@@ -1,7 +1,8 @@
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Annotated
 from typing_extensions import TypedDict
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 from models.shipment import (
-    Message,
     Attachment,
     PricingSchema,
     LanguageMetadata,
@@ -39,8 +40,10 @@ class AgentState(TypedDict):
     # ── Pricing ───────────────────────────────────────────
     pricing_details:   List[PricingSchema]
 
-    # ── Conversation ──────────────────────────────────────
-    messages:          List[Message]
+    # ── LangChain agent message history ───────────────────
+    # add_messages reducer: new messages are appended, not overwritten
+    messages: Annotated[List[BaseMessage], add_messages]
+
     attachments:       List[Attachment]
 
     # ── Output ────────────────────────────────────────────

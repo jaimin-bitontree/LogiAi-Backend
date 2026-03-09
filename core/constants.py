@@ -91,7 +91,7 @@ PACKAGE_TYPES = [
     "Bag", "Bulk Bag", "Bundle", "Bottle",
     "Box", "Basket", "Container", "Carton",
     "Envelope", "Mix", "Piece", "Package",
-    "Pallets", "Tube", "Unit", "PCS"
+    "Pallet", "Tube", "Unit", "PCS"
 ]
 
 SHIPMENT_TYPES = [

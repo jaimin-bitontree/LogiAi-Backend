@@ -44,7 +44,14 @@ async def get_shipment_status_context(
     if not shipment:
         return {
             "found": False,
-            "error": "No shipment matching your criteria was found."
+            "error": f"No shipment matching {request_id or customer_email} was found in our database."
+        }
+    
+    if shipment and shipment.request_id != request_id:
+        logger.info(f"Shipment found for Request ID: {request_id}")
+        return {
+            "found": False,
+            "error": f"No shipment matching {request_id} was found in our database."
         }
 
     # Security Verification: Ensure the requester actually owns the shipment
@@ -55,13 +62,10 @@ async def get_shipment_status_context(
         )
         return {
             "found": False,
-            "error": "You do not have permission to access this shipment status."
+            "error": f"Access denied. Shipment {shipment.request_id} is associated with a different email account."
         }
 
     return {
         "found": True,
-        "request_id": shipment.request_id,
-        "status": shipment.status,
-        "subject": shipment.subject,
-        "updated_at": shipment.updated_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(shipment, 'updated_at') else "N/A"
+        "shipment": shipment
     }

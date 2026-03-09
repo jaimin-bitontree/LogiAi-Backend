@@ -80,13 +80,18 @@ async def generate_reqid(state: AgentState) -> AgentState:
 
     if shipment:
         # Existing shipment found — update it in DB and hydrate state
-        # Set DB thread_id = current message
-        await update_shipment_thread_id(
-            shipment.request_id, 
-            current_message_id, 
-            attachments=state.get("attachments"),
-            new_message=new_message.dict()
-        )
+        # Dedup: only update if this specific Message-ID hasn't been logged yet
+        if current_message_id not in shipment.message_ids:
+            await update_shipment_thread_id(
+                shipment.request_id, 
+                current_message_id, 
+                attachments=state.get("attachments"),
+                new_message=new_message.dict()
+            )
+            logger.info("New message %s added to shipment %s", current_message_id, shipment.request_id)
+        else:
+            logger.info("Message %s already processed for shipment %s — skipping DB update but continuing workflow", current_message_id, shipment.request_id)
+            
         return _hydrate_state(state, shipment)
 
     # ── Step 4: Generate fresh request_id and store new shipment ──────────
@@ -96,7 +101,7 @@ async def generate_reqid(state: AgentState) -> AgentState:
     
     new_shipment = Shipment(
         request_id=new_id,
-        thread_id=current_message_id, # This is the "head" / latest message for next lookup
+        thread_id=current_message_id,
         customer_email=customer_email,
         subject=state.get("subject"),
         body=state.get("body", ""),

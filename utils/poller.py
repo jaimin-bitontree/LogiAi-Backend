@@ -29,12 +29,6 @@ async def job():
         for raw in raw_emails:
 
             try:
-                # 🔹 Dedup check: skip if Message-ID already in DB
-                message_id = extract_message_id(raw)
-                if message_id and await message_id_already_processed(message_id):
-                    print(f"⏭️  Skipping already-processed email: {message_id}")
-                    continue
-
                 result = await run_workflow(raw)
                 if result:
                     print(f"✅ Processed: {result.get('subject')}")

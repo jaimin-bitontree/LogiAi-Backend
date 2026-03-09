@@ -3,61 +3,52 @@ from agent.state import AgentState
 from agent.nodes.parse_node import parser_node
 from agent.nodes.language_node import language_node
 from agent.nodes.intent_node import intent_node
-from models.shipment import LanguageMetadata, ValidationResult, Attachment
 from agent.nodes.extraction_node import extraction_node
 from agent.nodes.missing_info_node import missing_info_node
 from agent.nodes.complete_info_node import complete_info_node
 from agent.nodes.reqid_generator_node import generate_reqid
 from agent.nodes.status_node import status_handler
+from agent.nodes.cancellation_node import cancellation_handler
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
 from core.constants import EmailIntent
 
-
 builder = StateGraph(AgentState)
 
-builder.add_node("parser",   parser_node)
-builder.add_node("language", language_node)
-builder.add_node("intent",   intent_node)
-builder.add_node("reqid",    generate_reqid)
-builder.add_node("extraction", extraction_node)
-builder.add_node("missing_info", missing_info_node)
+# ── Nodes ─────────────────────────────────────────────────────
+builder.add_node("parser",        parser_node)
+builder.add_node("language",      language_node)
+builder.add_node("intent",        intent_node)
+builder.add_node("reqid",         generate_reqid)
+builder.add_node("extraction",    extraction_node)
+builder.add_node("missing_info",  missing_info_node)
 builder.add_node("complete_info", complete_info_node)
-builder.add_node("status",   status_handler)
+builder.add_node("status",        status_handler)
+builder.add_node("cancellation",  cancellation_handler)
 
-
-def router(state: AgentState):
-    """
-    Decide next node based on intent.
-    """
+# ── Routers ────────────────────────────────────────────────────
+def intent_router(state: AgentState):
+    """Decide next node based on detected intent."""
     intent = state.get("intent")
     
     if intent == EmailIntent.STATUS_INQUIRY:
         return "status"
     
+    if intent == EmailIntent.CANCELLATION:
+        return "cancellation"
+    
     if intent in [EmailIntent.NEW_REQUEST, EmailIntent.MISSING_INFORMATION]:
         return "reqid"
     
-    # Defaults to END for other intents (or could default to reqid/status)
     return END
 
-
-builder.add_edge(START,      "parser")
-builder.add_edge("parser",   "language")
-builder.add_edge("language", "intent")
-builder.add_edge("intent",   "reqid")
-builder.add_edge("reqid",    "extraction")
-
-def route_after_extraction(state: AgentState):
+def extraction_router(state: AgentState):
     """Route based on whether all required fields were found."""
     val_res = state.get("validation_result")
     status = state.get("status")
 
-    # If extraction node caught an exception (like the Pydantic schema mismatch)
     if status == "ERROR":
-        print("⚠️ [workflow] Routing to END because extraction_node reported status='ERROR'")
         return END
     
-    # If the email didn't trigger extraction, val_res remains default (is_valid=False, missing_fields=[])
     if not val_res:
         return END
         
@@ -65,51 +56,63 @@ def route_after_extraction(state: AgentState):
         return "complete_info"
     elif val_res.missing_fields:
         return "missing_info"
-    else:
-        # no missing fields, but not valid -> extraction was skipped
-        return END
+    
+    return END
+
+# ── Edges ─────────────────────────────────────────────────────
+builder.add_edge(START,      "parser")
+builder.add_edge("parser",   "language")
+builder.add_edge("language", "intent")
 
 builder.add_conditional_edges(
-    "extraction", 
-    route_after_extraction,
-    {
-        "complete_info": "complete_info",
-        "missing_info":  "missing_info",
-    }
-)
-builder.add_conditional_edges(
     "intent",
-    router,
+    intent_router,
     {
         "status": "status",
+        "cancellation": "cancellation",
         "reqid":  "reqid",
         END: END
     }
 )
 
-builder.add_edge("missing_info",  "complete_info")
-builder.add_edge("complete_info", END)
-builder.add_edge("status", END)
+builder.add_edge("reqid",      "extraction")
+
+builder.add_conditional_edges(
+    "extraction", 
+    extraction_router,
+    {
+        "complete_info": "complete_info",
+        "missing_info":  "missing_info",
+        END: END
+    }
+)
+
+# Terminal Edges
+builder.add_edge("status",        END)
+builder.add_edge("cancellation",  END)
+builder.add_edge("missing_info",  END) # Stop after requesting more info
+builder.add_edge("complete_info", END) # Stop after notifying operator
 
 graph = builder.compile()
 
+# ── Helpers ────────────────────────────────────────────────────
 
 def create_initial_state(raw_email: bytes) -> AgentState:
     return {
         "raw_email": raw_email,
-        "request_id":       "",
-        "thread_id":        None,
-        "conversation_id":  None,
-        "last_message_id":  None,
-        "customer_email":   "",
-        "subject":          None,
-        "message_ids":      [],         
-        "body":             "",
-        "translated_body":  "",
-        "translated_subject":  "",
-        "status":           "NEW",  
-        "intent":           None,   
-        "attachments":      [],
+        "request_id":         "",
+        "thread_id":          None,
+        "conversation_id":    None,
+        "last_message_id":    None,
+        "customer_email":     "",
+        "subject":            None,
+        "message_ids":        [],         
+        "body":               "",
+        "translated_body":    "",
+        "translated_subject": "",
+        "status":             "NEW",  
+        "intent":             None,   
+        "attachments":        [],
         "language_metadata":  LanguageMetadata(),
         "request_data":       {},
         "validation_result":  ValidationResult(),
@@ -118,14 +121,11 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "final_document":     None,
     }
 
-
 async def run_workflow(raw_email: bytes) -> AgentState:
-    """
-    Create initial state and invoke graph using astream (async).
-    """
+    """Invoke graph asynchronously and return final state."""
     try:
         initial_state = create_initial_state(raw_email)
-        final_state = None
+        final_state = initial_state # Fallback
 
         async for step in graph.astream(initial_state):
             node_name = list(step.keys())[0]
@@ -135,11 +135,6 @@ async def run_workflow(raw_email: bytes) -> AgentState:
 
         return final_state
 
-        if result:
-            print(f"✅ Processed: {result.get('subject')}")
-        else:
-            print("⚠️ Workflow failed, result is None")
-        return result
     except Exception as e:
         print(f"❌ Workflow execution failed: {e}")
         return None

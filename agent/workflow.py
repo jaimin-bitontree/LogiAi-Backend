@@ -8,22 +8,42 @@ from agent.nodes.extraction_node import extraction_node
 from agent.nodes.missing_info_node import missing_info_node
 from agent.nodes.complete_info_node import complete_info_node
 from agent.nodes.reqid_generator_node import generate_reqid
+from agent.nodes.confirmation_node import confirmation_node
 
 builder = StateGraph(AgentState)
 
-builder.add_node("parser",   parser_node)
-builder.add_node("language", language_node)
-builder.add_node("intent",   intent_node)
-builder.add_node("reqid",    generate_reqid)
-builder.add_node("extraction", extraction_node)
+builder.add_node("parser",       parser_node)
+builder.add_node("language",     language_node)
+builder.add_node("intent",       intent_node)
+builder.add_node("reqid",        generate_reqid)
+builder.add_node("extraction",   extraction_node)
 builder.add_node("missing_info", missing_info_node)
 builder.add_node("complete_info", complete_info_node)
+builder.add_node("confirmation", confirmation_node)
 
 builder.add_edge(START,      "parser")
 builder.add_edge("parser",   "language")
 builder.add_edge("language", "intent")
-builder.add_edge("intent",   "reqid")
-builder.add_edge("reqid",    "extraction")
+
+
+def route_after_intent(state: AgentState):
+    intent = state.get("intent")
+    if intent == "confirmation":
+        return "confirmation"
+    return "reqid"
+
+
+builder.add_conditional_edges(
+    "intent",
+    route_after_intent,
+    {
+        "reqid":        "reqid",
+        "confirmation": "confirmation",
+    }
+)
+
+builder.add_edge("reqid", "extraction")
+
 
 def route_after_extraction(state: AgentState):
     """Route based on whether all required fields were found."""
@@ -34,11 +54,11 @@ def route_after_extraction(state: AgentState):
     if status == "ERROR":
         print("⚠️ [workflow] Routing to END because extraction_node reported status='ERROR'")
         return END
-    
+
     # If the email didn't trigger extraction, val_res remains default (is_valid=False, missing_fields=[])
     if not val_res:
         return END
-        
+
     if val_res.is_valid:
         return "complete_info"
     elif val_res.missing_fields:
@@ -47,8 +67,9 @@ def route_after_extraction(state: AgentState):
         # no missing fields, but not valid -> extraction was skipped
         return END
 
+
 builder.add_conditional_edges(
-    "extraction", 
+    "extraction",
     route_after_extraction,
     {
         "complete_info": "complete_info",
@@ -59,6 +80,7 @@ builder.add_conditional_edges(
 
 builder.add_edge("missing_info",  END)
 builder.add_edge("complete_info", END)
+builder.add_edge("confirmation",  END)
 
 graph = builder.compile()
 
@@ -72,12 +94,12 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "last_message_id":  None,
         "customer_email":   "",
         "subject":          None,
-        "message_ids":      [],         
+        "message_ids":      [],      
         "body":             "",
         "translated_body":  "",
         "translated_subject":  "",
-        "status":           "NEW",  
-        "intent":           None,   
+        "status":           "NEW",
+        "intent":           None,
         "attachments":      [],
         "language_metadata":  LanguageMetadata(),
         "request_data":       {},

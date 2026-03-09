@@ -121,8 +121,11 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "final_document":     None,
     }
 
+
 async def run_workflow(raw_email: bytes) -> AgentState:
-    """Invoke graph asynchronously and return final state."""
+    """
+    Create initial state and invoke graph using astream (async).
+    """
     try:
         initial_state = create_initial_state(raw_email)
         final_state = initial_state # Fallback

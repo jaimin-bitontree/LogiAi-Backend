@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator
-from typing import Optional
+from typing import Optional, Union
 from core.constants import (
     INCOTERMS,
     PACKAGE_TYPES,
@@ -51,7 +51,7 @@ class ExtractionSchema(BaseModel):
     additional_information:      Optional[str] = None
     stackable:                   Optional[bool] = None
     dangerous:                   Optional[bool] = None
-    temperature:                 Optional[str] = None
+    temperature:                 Optional[Union[float, str]] = None
 
     # ===============================
     # ENUM VALIDATORS
@@ -60,41 +60,33 @@ class ExtractionSchema(BaseModel):
     @classmethod
     def validate_incoterm(cls, v):
         if v and v not in INCOTERMS:
-            raise ValueError(f"Invalid incoterm '{v}'. Allowed: {INCOTERMS}")
+            return None   # discard invalid value instead of crashing
         return v
 
     @field_validator("package_type")
     @classmethod
     def validate_package_type(cls, v):
         if v and v not in PACKAGE_TYPES:
-            raise ValueError(
-                f"Invalid package_type '{v}'. Allowed: {PACKAGE_TYPES}"
-                )
+            return None
         return v
 
     @field_validator("shipment_type")
     @classmethod
     def validate_shipment_type(cls, v):
         if v and v not in SHIPMENT_TYPES:
-            raise ValueError(
-                f"Invalid shipment_type '{v}'. Allowed: {SHIPMENT_TYPES}"
-                )
+            return None
         return v
 
     @field_validator("transport_mode")
     @classmethod
     def validate_transport_mode(cls, v):
         if v and v not in TRANSPORT_MODES:
-            raise ValueError(
-                f"Invalid transport_mode '{v}'. Allowed: {TRANSPORT_MODES}"
-                )
+            return None
         return v
 
     @field_validator("container_type")
     @classmethod
     def validate_container_type(cls, v):
         if v and v not in CONTAINER_TYPES:
-            raise ValueError(
-                f"Invalid container_type '{v}'. Allowed: {CONTAINER_TYPES}"
-                )
+            return None
         return v

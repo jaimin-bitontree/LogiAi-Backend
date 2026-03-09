@@ -1,7 +1,11 @@
 from datetime import datetime
+import logging
+from typing import Optional
 
 from db.client import get_db
 from utils.serialization import serialize_pydantic
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -23,28 +27,35 @@ async def update_shipment_data(state: dict) -> None:
     """
     db         = get_db()
     request_id = state.get("request_id", "")
+    if not request_id:
+        logger.error("[shipment_service] update_shipment_data failed: no request_id provided.")
+        return
 
-    updates = {
-        # ── Language (language_node) ───────────────────────────
-        "translated_body":    state.get("translated_body", ""),
-        "translated_subject": state.get("translated_subject", ""),
-        "language_metadata":  serialize_pydantic(state.get("language_metadata")),
-
-        # ── Intent (intent_node) ──────────────────────────────
-        "intent": state.get("intent"),
-
-        # ── Extracted Fields (extract_node) ───────────────────
-        "request_data": state.get("request_data", {}),
-
-        # ── Validation (validation_node) ──────────────────────
-        "validation_result": serialize_pydantic(state.get("validation_result")),
-
-        # ── Status (missing_info_node) ────────────────────────
-        "status": state.get("status", "NEW"),
-
-        # ── Timestamp ─────────────────────────────────────────
-        "updated_at": datetime.utcnow(),
+    # Build update dict dynamically mapping state keys to DB fields
+    # Only include keys that are actually present in the 'state' input
+    mapping = {
+        "translated_body":    "translated_body",
+        "translated_subject": "translated_subject",
+        "language_metadata":  "language_metadata",
+        "intent":             "intent",
+        "request_data":       "request_data",
+        "validation_result":  "validation_result",
+        "status":             "status",
     }
+
+    updates = {}
+    for state_key, db_key in mapping.items():
+        if state_key in state:
+            val = state[state_key]
+            # Handle serialization for Pydantic objects
+            if state_key in ["language_metadata", "validation_result"]:
+                val = serialize_pydantic(val)
+            updates[db_key] = val
+
+    if not updates:
+        return
+
+    updates["updated_at"] = datetime.utcnow()
 
     result = await db["shipments"].update_one(
         {"request_id": request_id},
@@ -117,3 +128,63 @@ async def update_shipment(request_id: str, updates: dict) -> None:
         print(f"⚠️  No shipment found with request_id={request_id}")
     else:
         print(f"✅ Shipment updated | request_id: {request_id} | fields: {list(updates.keys())}")
+
+
+async def get_request_data(request_id: str) -> dict:
+    """
+    Fetch just the request_data field from the shipment document.
+    Used by email tools to read extracted data without the LLM needing to pass it.
+
+    Returns: request_data dict (has 'required' and 'optional' keys), or {}.
+    """
+    db  = get_db()
+    doc = await db["shipments"].find_one(
+        {"request_id": request_id},
+        {"request_data": 1, "_id": 0}
+    )
+    return doc.get("request_data", {}) if doc else {}
+
+async def get_shipment_by_request_id(request_id: str) -> Optional[dict]:
+    """
+    Fetch a single shipment document from MongoDB by request_id.
+
+    Used by extraction tools to read email body and existing data
+    without passing large strings through the LLM tool calls.
+
+    Args:
+        request_id: The REQ-ID string e.g. REQ-2026-0309075733293729
+
+    Returns:
+        Shipment dict if found, None if not found.
+    """
+    db = get_db()
+    try:
+        shipment = await db["shipments"].find_one(
+            {"request_id": request_id},
+            {
+                # Only fetch fields we actually need
+                # Avoids loading entire document unnecessarily
+                "request_id":          1,
+                "subject":             1,
+                "translated_subject":  1,
+                "body":                1,
+                "translated_body":     1,
+                "request_data":        1,
+                "validation_result":   1,
+                "status":              1,
+                "customer_email":      1,
+                "last_message_id":     1,
+                "_id":                 0,   # never return _id
+            }
+        )
+
+        if not shipment:
+            logger.warning("[shipment_service] Not found: %s", request_id)
+            return None
+
+        logger.info("[shipment_service] Found: %s", request_id)
+        return shipment
+
+    except Exception as e:
+        logger.error("[shipment_service] get_shipment_by_request_id failed: %s | error: %s", request_id, e)
+        return None

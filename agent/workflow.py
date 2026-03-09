@@ -1,148 +1,244 @@
+"""
+agent/workflow.py
+
+LangGraph workflow — agentic tool-calling architecture.
+
+Pre-processing (fixed sequence, runs in order):
+  parser → language → intent → reqid → context_builder
+
+Agentic loop (LLM decides what tool to call next):
+  agent ←→ tools  (loops until LLM has no more tool calls)
+"""
+
+import logging
 from langgraph.graph import StateGraph, START, END
+# from langgraph.prebuilt import ToolNode  # Not available in this version
+
 from agent.state import AgentState
 from agent.nodes.parse_node import parser_node
 from agent.nodes.language_node import language_node
 from agent.nodes.intent_node import intent_node
-from agent.nodes.extraction_node import extraction_node
-from agent.nodes.missing_info_node import missing_info_node
-from agent.nodes.complete_info_node import complete_info_node
 from agent.nodes.reqid_generator_node import generate_reqid
-from agent.nodes.confirmation_node import confirmation_node
+from agent.nodes.context_builder_node import context_builder_node
+from agent.agent_node import call_agent, TOOLS
+from models.shipment import LanguageMetadata, ValidationResult, Attachment
 
+logger = logging.getLogger(__name__)
+
+
+# Custom ToolNode implementation since prebuilt is not available
+class ToolNode:
+    def __init__(self, tools):
+        self.tools = {tool.name: tool for tool in tools}
+    
+    async def __call__(self, state):
+        messages = state["messages"]
+        last_message = messages[-1]
+        
+        if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+            return {"messages": []}
+        
+        tool_messages = []
+        email_tool_executed = False
+        
+        for tool_call in last_message.tool_calls:
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"]
+            tool_id = tool_call["id"]
+            
+            # Check if this is an email-sending tool
+            email_sending_tools = [
+                "send_missing_info_email",
+                "send_complete_info_emails", 
+                "send_status_update",
+                "calculate_and_send_pricing",
+                "process_shipment_confirmation",
+                "cancel_shipment"
+            ]
+            
+            if tool_name in email_sending_tools:
+                email_tool_executed = True
+            
+            if tool_name in self.tools:
+                try:
+                    tool = self.tools[tool_name]
+                    result = await tool.ainvoke(tool_args)
+                    
+                    from langchain_core.messages import ToolMessage
+                    tool_message = ToolMessage(
+                        content=str(result),
+                        tool_call_id=tool_id
+                    )
+                    tool_messages.append(tool_message)
+                    
+                    # Log email tool execution
+                    if email_tool_executed:
+                        logger.info(f"[ToolNode] Email tool '{tool_name}' executed successfully")
+                        
+                except Exception as e:
+                    from langchain_core.messages import ToolMessage
+                    error_message = ToolMessage(
+                        content=f"Error: {str(e)}",
+                        tool_call_id=tool_id
+                    )
+                    tool_messages.append(error_message)
+        
+        # Add a flag to state if email tool was executed
+        result = {"messages": tool_messages}
+        if email_tool_executed:
+            result["email_tool_executed"] = True
+            
+        return result
+
+# ── Build graph ───────────────────────────────────────────────
 builder = StateGraph(AgentState)
 
-builder.add_node("parser",       parser_node)
-builder.add_node("language",     language_node)
-builder.add_node("intent",       intent_node)
-builder.add_node("reqid",        generate_reqid)
-builder.add_node("extraction",   extraction_node)
-builder.add_node("missing_info", missing_info_node)
-builder.add_node("complete_info", complete_info_node)
-builder.add_node("confirmation", confirmation_node)
+# Pre-processing nodes (always run in fixed order)
+builder.add_node("parser",          parser_node)
+builder.add_node("language",        language_node)
+builder.add_node("intent",          intent_node)
+builder.add_node("reqid",           generate_reqid)
+builder.add_node("context_builder", context_builder_node)  # Seeds agent with HumanMessage
 
-builder.add_edge(START,      "parser")
-builder.add_edge("parser",   "language")
-builder.add_edge("language", "intent")
+# Agentic loop
+builder.add_node("agent", call_agent)
+builder.add_node("tools", ToolNode(TOOLS))
 
+# ── Fixed pre-processing chain ────────────────────────────────
+builder.add_edge(START,             "parser")
+builder.add_edge("parser",          "language")
+builder.add_edge("language",        "intent")
+builder.add_edge("intent",          "reqid")
+builder.add_edge("reqid",           "context_builder")
+builder.add_edge("context_builder", "agent")           # Hand off to agent loop
 
-def route_after_intent(state: AgentState):
-    intent = state.get("intent")
-    if intent == "confirmation":
-        return "confirmation"
-    return "reqid"
-
-
-builder.add_conditional_edges(
-    "intent",
-    route_after_intent,
-    {
-        "reqid":        "reqid",
-        "confirmation": "confirmation",
-    }
-)
-
-builder.add_edge("reqid", "extraction")
-
-
-def route_after_extraction(state: AgentState):
-    """Route based on whether all required fields were found."""
-    # Route to pricing node if is_operator is True
-    if state.get("is_operator"):
-        return "pricing"
+# ── Agentic loop ──────────────────────────────────────────────
+def should_continue(state: AgentState) -> str:
+    """If LLM returned tool_calls → run tools. Otherwise → END.
+    Also END if an email notification tool was just called."""
+    messages = state["messages"]
+    
+    if not messages:
+        return END
+    
+    # Check if email tool was just executed (set by ToolNode)
+    if state.get("email_tool_executed", False):
+        logger.info(f"[workflow] Email tool executed flag detected, ending workflow")
+        return END
+    
+    last_message = messages[-1]
+    
+    # Check if we just completed an email tool by looking at ToolMessage content
+    if hasattr(last_message, 'content') and hasattr(last_message, 'tool_call_id'):
+        content = str(last_message.content)
+        # Check for email tool completion indicators
+        email_indicators = [
+            "Email sent to",
+            "Both emails sent",
+            "Missing info email sent",
+            "Status update sent",
+            "Confirmation email sent",
+            "Cancellation email sent",
+            "Pricing email sent"
+        ]
         
-    val_res = state.get("validation_result")
-    status = state.get("status")
+        if any(indicator in content for indicator in email_indicators):
+            logger.info(f"[workflow] Email tool completed (detected from content), ending workflow")
+            return END
+    
+    # If agent wants to call more tools, continue
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        # Check if it's trying to call an email-sending tool that was recently called (prevent loops)
+        if len(messages) >= 3:  # Need at least: system, agent_call, tool_result
+            # Look for recent tool calls to prevent duplicates
+            recent_tool_calls = []
+            for msg in messages[-8:]:  # Check last 8 messages for tool calls
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    for tool_call in msg.tool_calls:
+                        recent_tool_calls.append(tool_call.get("name", ""))
+            
+            # Email-sending tools that should not be called repeatedly
+            email_sending_tools = [
+                "send_missing_info_email",
+                "send_complete_info_emails", 
+                "send_status_update",
+                "calculate_and_send_pricing",
+                "process_shipment_confirmation",
+                "cancel_shipment"
+            ]
+            
+            # If we're about to call an email-sending tool that was recently called, stop
+            for tool_call in last_message.tool_calls:
+                tool_name = tool_call.get("name", "")
+                if tool_name in email_sending_tools and recent_tool_calls.count(tool_name) >= 2:
+                    logger.warning(f"[workflow] Preventing duplicate email-sending tool call: {tool_name}")
+                    return END
+        
+        return "tools"
+    
+    return END
 
-    # If extraction node caught an exception (like the Pydantic schema mismatch)
-    if status == "ERROR":
-        print("⚠️ [workflow] Routing to END because extraction_node reported status='ERROR'")
-        return END
-
-    # If the email didn't trigger extraction, val_res remains default (is_valid=False, missing_fields=[])
-    if not val_res:
-        return END
-
-    if val_res.is_valid:
-        return "complete_info"
-    elif val_res.missing_fields:
-        return "missing_info"
-    else:
-        # no missing fields, but not valid -> extraction was skipped
-        return END
-
-
-builder.add_conditional_edges(
-    "extraction",
-    route_after_extraction,
-    {
-        "complete_info": "complete_info",
-        "missing_info":  "missing_info",
-        END: END
-    }
-)
-
-# Terminal Edges
-builder.add_edge("missing_info",  END)
-builder.add_edge("complete_info", END)
-builder.add_edge("confirmation",  END)
+builder.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+builder.add_edge("tools", "agent")  # Always loop back to agent after tool runs
 
 graph = builder.compile()
 
 
+# ── Initial state ─────────────────────────────────────────────
+
 def create_initial_state(raw_email: bytes) -> AgentState:
     return {
-        "raw_email": raw_email,
-        "request_id":       "",
-        "thread_id":        None,  # Conversation root (set once)
-        "conversation_id":  None,
-        "last_message_id": None,  # Current head (always updated)
-        "customer_email":   "",
-        "subject":          None,
-        "message_ids":      [],      
-        "body":             "",
-        "translated_body":  "",
+        "raw_email":           raw_email,
+        "request_id":          "",
+        "thread_id":           None,
+        "conversation_id":     None,
+        "last_message_id":     None,
+        "customer_email":      "",
+        "subject":             None,
+        "message_ids":         [],
+        "body":                "",
+        "translated_body":     "",
         "translated_subject":  "",
-        "status":           "NEW",
-        "intent":           None,
-        "attachments":      [],
-        "language_metadata":  LanguageMetadata(),
-        "request_data":       {},
-        "validation_result":  ValidationResult(),
-        "pricing_details":    [],
-        "messages":           [],
-        "is_operator":        False,
-        "shipment_found":     False,
-        "final_document":     None,
+        "status":              "NEW",
+        "intent":              None,
+        "attachments":         [],
+        "language_metadata":   LanguageMetadata(),
+        "request_data":        {},
+        "validation_result":   ValidationResult(),
+        "pricing_details":     [],
+        "messages":            [],   # Seeded properly by context_builder_node
+        "final_document":      None,
+        "shipment_found":      False,
+        "is_operator":         False,
+        "email_tool_executed": False,
     }
 
 
+# ── Workflow runner ────────────────────────────────────────────
+
 async def run_workflow(raw_email: bytes) -> AgentState:
     """
-    Create initial state and invoke graph.
-    Streams output so you can see state after each node.
+    Run the full pipeline:
+      1. Pre-processing (parser, language, intent, reqid, context_builder)
+      2. Agent loop (agent ↔ tools, LLM-driven)
     """
     try:
         initial_state = create_initial_state(raw_email)
-        final_state = None
+        final_state   = None
 
         async for step in graph.astream(initial_state):
-            node_name = list(step.keys())[0]
+            node_name  = list(step.keys())[0]
             node_state = step[node_name]
-            
-            # Print node completion without raw_email
-            print(f"\n✅ After node: [{node_name}]")
-            
-            # Print only relevant fields (exclude raw_email to avoid clutter)
-            debug_state = {k: v for k, v in node_state.items() if k != 'raw_email'}
-            print(f"  request_id: {debug_state.get('request_id', '')}")
-            print(f"  status: {debug_state.get('status', '')}")
-            print(f"  is_operator: {debug_state.get('is_operator', False)}")
-            print(f"  shipment_found: {debug_state.get('shipment_found', False)}")
-            
+            logger.info(f"After node: [{node_name}]")
             final_state = node_state
+
+        if final_state:
+            logger.info(f"Processed: {final_state.get('subject')}")
+        else:
+            logger.warning("Workflow returned no final state")
 
         return final_state
 
     except Exception as e:
-        print(f"❌ Workflow execution failed: {e}")
-        return None
+        logger.error(f"Workflow execution failed: {e}")
+        raise

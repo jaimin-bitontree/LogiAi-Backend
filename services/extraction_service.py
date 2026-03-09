@@ -43,7 +43,7 @@ Required fields:
 Optional fields:
 {json.dumps(OPTIONAL_FIELDS, indent=2)}
 
-CRITICAL - Allowed values (use EXACT match, case-sensitive):
+Allowed values — copy EXACTLY from this list, no paraphrasing:
 incoterm       : {json.dumps(INCOTERMS)}
 package_type   : {json.dumps(PACKAGE_TYPES)}
 shipment_type  : {json.dumps(SHIPMENT_TYPES)}
@@ -52,22 +52,20 @@ container_type : {json.dumps(CONTAINER_TYPES)}
 
 Rules:
 1. Extract only values explicitly mentioned.
-2. For enum fields (incoterm, package_type, etc.), you MUST use EXACT values from the allowed lists above.
-   - "Bags" → use "Bag" (singular)
-   - "boxes" → use "Box" (capitalized)
-   - "40ft container" → use "40' GP"
-   - "wooden crates" → use "Box"
-3. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
-4. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
-5. quantity must be integer
-6. weights and dimensions must be float
-7. stackable / dangerous must be boolean
-8. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
-9. Unknown or missing fields → null
-10. If customer mentions a package type not in the list, map to closest match:
-    - crates/wooden crates → "Box"
-    - sacks → "Bag"
-    - parcels → "Package"
+2. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
+3. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
+4. quantity must be integer
+5. weights and dimensions must be float
+6. stackable / dangerous must be boolean
+7. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
+8. Unknown or missing fields → null
+9. CRITICAL — for transport_mode, package_type, shipment_type, container_type, incoterm:
+   Use ONLY the exact string from the allowed list. Do NOT paraphrase or extend.
+   BAD: "Sea Freight" → GOOD: "Sea"
+   BAD: "20FT Standard Container" → GOOD: "20' GP"
+   BAD: "Pallet" → GOOD: "Pallets"
+   BAD: "air freight" → GOOD: "Air"
+   If no allowed value fits closely enough → null
 
 Return ONLY JSON in this format:
 {_JSON_FORMAT}
@@ -160,16 +158,26 @@ def extract_missing_fields(
     # Build a focused prompt with only the missing fields
     missing_format = json.dumps({field: None for field in missing_fields}, indent=2)
 
+    # Build format with ALL fields (not just missing ones)
+    all_fields_format = json.dumps(
+        {field: None for field in REQUIRED_FIELDS + OPTIONAL_FIELDS},
+        indent=2
+    )
+
     focused_prompt = f"""
 You are a logistics data extraction engine for LogiAI.
 
-The customer was asked to provide the following missing fields.
-Extract ONLY these fields from their reply:
-
-Missing fields to extract:
+The customer was asked to provide these missing fields:
 {json.dumps(missing_fields, indent=2)}
 
-CRITICAL - Allowed values (use EXACT match, case-sensitive):
+IMPORTANT: Extract the missing fields above, BUT ALSO extract any other shipment fields 
+mentioned in the email (even if not requested). This ensures no information is lost.
+
+All possible fields:
+Required: {json.dumps(REQUIRED_FIELDS, indent=2)}
+Optional: {json.dumps(OPTIONAL_FIELDS, indent=2)}
+
+Allowed values:
 incoterm       : {json.dumps(INCOTERMS)}
 package_type   : {json.dumps(PACKAGE_TYPES)}
 shipment_type  : {json.dumps(SHIPMENT_TYPES)}
@@ -177,26 +185,17 @@ transport_mode : {json.dumps(TRANSPORT_MODES)}
 container_type : {json.dumps(CONTAINER_TYPES)}
 
 Rules:
-1. Extract only values explicitly mentioned.
-2. For enum fields (incoterm, package_type, etc.), you MUST use EXACT values from the allowed lists above.
-   - "Bags" → use "Bag" (singular)
-   - "boxes" → use "Box" (capitalized)
-   - "40ft container" → use "40' GP"
-   - "wooden crates" → use "Box"
-3. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
-4. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
-5. quantity must be integer
-6. weights and dimensions must be float
-7. stackable / dangerous must be boolean
-8. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
-9. If a field is not mentioned → null
-10. If customer mentions a package type not in the list, map to closest match:
-    - crates/wooden crates → "Box"
-    - sacks → "Bag"
-    - parcels → "Package"
+1. Extract ALL values explicitly mentioned in the email (not just the missing fields)
+2. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
+3. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
+4. quantity must be integer
+5. weights and dimensions must be float
+6. stackable / dangerous must be boolean
+7. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
+8. If a field is not mentioned → null
 
-Return ONLY JSON with these fields:
-{missing_format}
+Return JSON with ALL fields (set to null if not mentioned):
+{all_fields_format}
 """.strip()
 
     try:
@@ -206,25 +205,41 @@ Return ONLY JSON with these fields:
                 {"role": "system", "content": focused_prompt},
                 {
                     "role": "user",
-                    "content": f"Extract the missing fields from this reply:\n\n{email_content}",
+                    "content": f"Extract fields from this reply (prioritize the missing fields but also extract any other fields mentioned):\n\n{email_content}",
                 },
             ],
             temperature=0.0,
-            max_tokens=512,
+            max_tokens=1024,  # Increased from 512 since we're extracting more fields
+            response_format={"type": "json_object"}  # Force JSON output
         )
 
-        raw_text = response.choices[0].message.content.strip()
+        raw_text = response.choices[0].message.content
+        if not raw_text:
+            print(f"[extraction_service] ERROR: LLM returned empty content")
+            raise ValueError("LLM returned empty content")
+        
+        raw_text = raw_text.strip()
+        print(f"[extraction_service] LLM raw response: {raw_text[:200]}")
+        
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-        parsed   = json.loads(raw_text)
+        
+        if not raw_text:
+            print(f"[extraction_service] ERROR: Empty after cleaning")
+            raise ValueError("Empty response after cleaning markdown")
+        
+        parsed = json.loads(raw_text)
 
         # Return only non-null values
         return {k: v for k, v in parsed.items() if v is not None}
 
     except json.JSONDecodeError as e:
+        print(f"[extraction_service] JSON decode error: {e}")
+        print(f"[extraction_service] Raw text was: {raw_text if 'raw_text' in locals() else 'N/A'}")
         raise ValueError(f"Invalid JSON from LLM: {e}")
     except ValueError:
         raise
     except Exception as e:
+        print(f"[extraction_service] Unexpected error: {e}")
         raise RuntimeError(f"Missing field extraction failed: {e}")
     finally:
         print(f"[extraction_service] extract_missing_fields() | missing: {missing_fields}")

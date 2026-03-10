@@ -12,7 +12,6 @@ from agent.nodes.status_node import status_handler
 from agent.nodes.cancellation_node import cancellation_handler
 from agent.nodes.pricing_node import pricing_node
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
-from core.constants import EmailIntent
 
 builder = StateGraph(AgentState)
 
@@ -68,18 +67,22 @@ def route_after_extraction(state: AgentState):
     val_res = state.get("validation_result")
     status = state.get("status")
 
+    # If extraction node caught an exception (like the Pydantic schema mismatch)
     if status == "ERROR":
+        print("⚠️ [workflow] Routing to END because extraction_node reported status='ERROR'")
         return END
     
+    # If the email didn't trigger extraction, val_res remains default (is_valid=False, missing_fields=[])
     if not val_res:
         return END
-
+        
     if val_res.is_valid:
         return "complete_info"
     elif val_res.missing_fields:
         return "missing_info"
-    
-    return END
+    else:
+        # no missing fields, but not valid -> extraction was skipped
+        return END
 
 # ── Edges ─────────────────────────────────────────────────────
 builder.add_edge(START, "parser")
@@ -116,46 +119,43 @@ builder.add_conditional_edges(
     }
 )
 
-
 builder.add_conditional_edges(
-    "extraction",
+    "extraction", 
     route_after_extraction,
     {
         "complete_info": "complete_info",
-        "missing_info": "missing_info",
+        "missing_info":  "missing_info",
         END: END
     }
 )
 
 # Terminal Edges
+builder.add_edge("missing_info",  END)
+builder.add_edge("complete_info", END)
 builder.add_edge("pricing",       END)
 builder.add_edge("status",        END)
 builder.add_edge("cancellation",  END)
 builder.add_edge("confirmation",  END)
-builder.add_edge("missing_info",  END)
-builder.add_edge("complete_info", END)
-builder.add_edge("confirmation",  END)
 
 graph = builder.compile()
 
-# ── Helpers ────────────────────────────────────────────────────
 
 def create_initial_state(raw_email: bytes) -> AgentState:
     return {
         "raw_email": raw_email,
-        "request_id":         "",
-        "thread_id":          None,
-        "conversation_id":    None,
-        "last_message_id":    None,
-        "customer_email":     "",
-        "subject":            None,
-        "message_ids":        [],         
-        "body":               "",
-        "translated_body":    "",
-        "translated_subject": "",
-        "status":             "NEW",  
-        "intent":             None,   
-        "attachments":        [],
+        "request_id":       "",
+        "thread_id":        None,  # Conversation root (set once)
+        "conversation_id":  None,
+        "last_message_id": None,  # Current head (always updated)
+        "customer_email":   "",
+        "subject":          None,
+        "message_ids":      [],         
+        "body":             "",
+        "translated_body":  "",
+        "translated_subject":  "",
+        "status":           "NEW",  
+        "intent":           None,   
+        "attachments":      [],
         "language_metadata":  LanguageMetadata(),
         "request_data":       {},
         "validation_result":  ValidationResult(),
@@ -169,7 +169,8 @@ def create_initial_state(raw_email: bytes) -> AgentState:
 
 async def run_workflow(raw_email: bytes) -> AgentState:
     """
-    Create initial state and invoke graph using astream (async).
+    Create initial state and invoke graph.
+    Streams output so you can see state after each node.
     """
     try:
         initial_state = create_initial_state(raw_email)

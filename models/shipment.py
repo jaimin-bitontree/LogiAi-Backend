@@ -32,11 +32,42 @@ class Message(BaseModel):
     received_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class PricingSchema(BaseModel):
-    amount: float
+class ChargeItem(BaseModel):
+    description: str
+    rate: Optional[str] = None
+    basis: Optional[str] = None
+    amount: str
     currency: str
-    valid_until: Optional[str] = None
-    remarks: Optional[str] = None
+
+class ShipmentPricingDetails(BaseModel):
+    pol: Optional[str] = None
+    pod: Optional[str] = None
+    cargo_type: Optional[str] = None
+    container_type: Optional[str] = None
+    weight_dimensions: Optional[str] = None
+    incoterm: Optional[str] = None
+    special_requirements: Optional[str] = None
+    chargeable_weight: Optional[str] = None
+    volume: Optional[str] = None
+
+class PaymentTerms(BaseModel):
+    validity: Optional[str] = None
+    conditions: Optional[str] = None
+    payment_method: Optional[str] = None
+
+class PricingSchema(BaseModel):
+    subject: Optional[str] = None
+    greeting: Optional[str] = None
+    transport_mode: Optional[str] = None
+    pricing_type: Optional[str] = None
+    shipment_details: ShipmentPricingDetails = Field(default_factory=ShipmentPricingDetails)
+    main_freight_charges: List[ChargeItem] = Field(default_factory=list)
+    origin_charges: List[ChargeItem] = Field(default_factory=list)
+    destination_charges: List[ChargeItem] = Field(default_factory=list)
+    additional_charges: List[ChargeItem] = Field(default_factory=list)
+    payment_terms: PaymentTerms = Field(default_factory=PaymentTerms)
+    calculation_notes: Optional[str] = None
+    closing: Optional[str] = None
 
 # ============================================================
 # LANGUAGE METADATA MODEL
@@ -61,8 +92,9 @@ class ValidationResult(BaseModel):
 
 class Shipment(BaseModel):
     request_id: str
-    thread_id: Optional[str] = None
-    last_message_id: Optional[str] = None
+    thread_id: Optional[str] = None  # Conversation root (FIRST message, never changes)
+    conversation_id: Optional[str] = None
+    last_message_id: Optional[str] = None  # Current head (LATEST message, always updated)
     customer_email: str
     subject: Optional[str] = None
     body: str

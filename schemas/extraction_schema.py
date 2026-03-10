@@ -51,7 +51,7 @@ class ExtractionSchema(BaseModel):
     additional_information:      Optional[str] = None
     stackable:                   Optional[bool] = None
     dangerous:                   Optional[bool] = None
-    temperature:                 Optional[float] = None
+    temperature:                 Optional[str] = None
 
     # ===============================
     # ENUM VALIDATORS

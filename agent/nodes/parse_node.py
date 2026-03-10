@@ -7,46 +7,9 @@ from utils.email_utils import (
     clean_email_body,
     extract_attachments,
 )
+from utils.attachment_helper import extract_text_from_pdf, extract_text_from_excel
 from agent.state import AgentState
-import fitz
-import io
-import openpyxl
 from langchain_core.tools import tool
-
-
-# pdf
-
-def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
-    """Extracts all text from PDF bytes using PyMuPDF (fitz)."""
-    text = ""
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        for page in doc:
-            text += page.get_text() + "\n"
-    return text.strip()
-
-
-# excel
-
-def _extract_text_from_excel(excel_bytes: bytes) -> str:
-    """
-    Extracts all text from Excel bytes using openpyxl.
-    Reads every sheet, every row, every cell.
-    Returns readable text representation of all sheets.
-    """
-    text = ""
-    wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
-
-    for sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        text += f"\n[Sheet: {sheet_name}]\n"
-
-        for row in ws.iter_rows(values_only=True):
-            # filter out completely empty rows
-            values = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
-            if values:
-                text += " | ".join(values) + "\n"
-
-    return text.strip()
 
 
 # tool — append PDF text to body
@@ -129,7 +92,7 @@ def parser_node(state: AgentState) -> AgentState:
         if is_pdf and att.content:
             try:
                 print(f"[parse_node] Extracting PDF: {att.filename}")
-                pdf_text = _extract_text_from_pdf(att.content)
+                pdf_text = extract_text_from_pdf(att.content)
                 if not pdf_text:
                     print(f"[parse_node] ⚠️ No text extracted from {att.filename} — may be scanned or image-based PDF")
                     updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a digital PDF]"
@@ -147,7 +110,7 @@ def parser_node(state: AgentState) -> AgentState:
         elif is_excel and att.content:
             try:
                 print(f"[parse_node] Extracting Excel: {att.filename}")
-                excel_text = _extract_text_from_excel(att.content)
+                excel_text = extract_text_from_excel(att.content)
                 if not excel_text:
                     print(f"[parse_node] ⚠️ No text extracted from {att.filename} — file may be empty")
                     updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a valid Excel file]"
@@ -174,7 +137,7 @@ def parser_node(state: AgentState) -> AgentState:
     state.update({
         "message_ids": message_ids,
         "last_message_id": message_id,
-        "thread_id": message_id,
+        "thread_id": thread_id or message_id,
         "conversation_id": thread_id,
         "customer_email": customer_email,
         "subject": subject,

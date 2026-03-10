@@ -3,6 +3,7 @@ import httpx
 from agent.state import AgentState
 from services.shipment_service import (
     find_by_thread_id,
+    find_by_any_message_id,
     find_by_request_id,
     find_by_email_and_open_status,
     create_shipment,
@@ -35,6 +36,17 @@ async def _safe_lookup(fn, *args):
 
 
 async def generate_reqid(state: AgentState) -> AgentState:
+    """
+    Improved lookup strategy using thread_id (conversation root) and message_ids array.
+    
+    Lookup order:
+      1. Check if current message already processed (dedup)
+      2. Check if In-Reply-To matches thread_id (conversation root)
+      3. Check if In-Reply-To exists in message_ids array (any message in conversation)
+      4. Check by request_id in email body
+      5. Fallback to email + open status (customers only)
+      6. Create new shipment (customers only)
+    """
 
     # thread_id (state)       = current Message-ID
     # conversation_id (state) = parent Message-ID (In-Reply-To)
@@ -43,60 +55,93 @@ async def generate_reqid(state: AgentState) -> AgentState:
     conversation_id    = state.get("conversation_id", "")
     request_id         = state.get("request_id", "")
     customer_email     = state.get("customer_email", "")
+    is_operator        = state.get("is_operator", False)
+
+    logger.info("=" * 60)
+    logger.info("REQID GENERATOR NODE")
+    logger.info("  current_message_id: %s", current_message_id)
+    logger.info("  conversation_id: %s", conversation_id)
+    logger.info("  customer_email: %s", customer_email)
+    logger.info("  is_operator: %s", is_operator)
+    logger.info("=" * 60)
 
     shipment = None
 
-    # ── Step 1: Lookup by parent message ID ────────────────────────────────
-    # If this message is a reply, its conversation_id is the parent message.
-    # We find if any shipment has that parent as its thread_id (its latest message).
+    # ── Step 1: Dedup check — is this message already processed? ──────────
+    if current_message_id:
+        shipment = await _safe_lookup(find_by_any_message_id, current_message_id)
+        if shipment:
+            logger.info("Step 1 HIT — message already processed (dedup): %s", current_message_id)
+            return _hydrate_state(state, shipment)
+
+    # ── Step 2: Check if In-Reply-To matches thread_id (conversation root) ─
     if conversation_id:
         shipment = await _safe_lookup(find_by_thread_id, conversation_id)
         if shipment:
-            logger.info("Step 1 HIT — matched by parent message ID (In-Reply-To): %s", conversation_id)
+            logger.info("Step 2 HIT — matched conversation root (thread_id): %s", conversation_id)
+            await update_shipment_thread_id(
+                shipment.request_id, 
+                current_message_id, 
+                attachments=state.get("attachments"),
+                new_message=_build_message(state).dict()
+            )
+            return _hydrate_state(state, shipment)
 
-    # ── Step 2: Lookup by request_id ──────────────────────────────────────
-    if not shipment and request_id:
+    # ── Step 3: Check if In-Reply-To exists in message_ids array ──────────
+    if conversation_id:
+        shipment = await _safe_lookup(find_by_any_message_id, conversation_id)
+        if shipment:
+            logger.info("Step 3 HIT — matched message in conversation (message_ids): %s", conversation_id)
+            await update_shipment_thread_id(
+                shipment.request_id, 
+                current_message_id, 
+                attachments=state.get("attachments"),
+                new_message=_build_message(state).dict()
+            )
+            return _hydrate_state(state, shipment)
+
+    # ── Step 4: Lookup by request_id (extracted from email body) ──────────
+    if request_id:
         shipment = await _safe_lookup(find_by_request_id, request_id)
         if shipment:
-            logger.info("Step 2 HIT — matched by request_id: %s", request_id)
+            logger.info("Step 4 HIT — matched by request_id: %s", request_id)
+            await update_shipment_thread_id(
+                shipment.request_id, 
+                current_message_id, 
+                attachments=state.get("attachments"),
+                new_message=_build_message(state).dict()
+            )
+            return _hydrate_state(state, shipment)
 
-    # ── Step 3: Lookup by email + open status ─────────────────────────────
-    if not shipment and customer_email:
+    # ── Step 5: Lookup by email + open status ─────────────────────────────
+    # Skip this step for operator emails (they should match via In-Reply-To)
+    if customer_email and not state.get("is_operator"):
         shipment = await _safe_lookup(find_by_email_and_open_status, customer_email)
         if shipment:
-            logger.info("Step 3 HIT — matched by email %s with status %s", customer_email, shipment.status)
+            logger.info("Step 5 HIT — matched by email %s with status %s", customer_email, shipment.status)
+            await update_shipment_thread_id(
+                shipment.request_id, 
+                current_message_id, 
+                attachments=state.get("attachments"),
+                new_message=_build_message(state).dict()
+            )
+            return _hydrate_state(state, shipment)
 
-    # ── Prepare Message Object ────────────────────────────────────────────
-    from models.shipment import Message
-    new_message = Message(
-        message_id=current_message_id,
-        sender_email=state.get("customer_email"),
-        sender_type="customer",
-        direction="incoming",
-        subject=state.get("subject"),
-        body=state.get("body", ""),
-        attachments=state.get("attachments", [])
-    )
-
-    if shipment:
-        # Existing shipment found — update it in DB and hydrate state
-        # Set DB thread_id = current message
-        await update_shipment_thread_id(
-            shipment.request_id, 
-            current_message_id, 
-            attachments=state.get("attachments"),
-            new_message=new_message.dict()
-        )
-        return _hydrate_state(state, shipment)
-
-    # ── Step 4: Generate fresh request_id and store new shipment ──────────
+    # ── Step 6: Generate fresh request_id and store new shipment ──────────
+    # Operator emails should NEVER create new shipments
+    if state.get("is_operator"):
+        logger.error("Step 6 — Operator email did not match any shipment. This should not happen!")
+        logger.error("conversation_id=%s, current_message_id=%s", conversation_id, current_message_id)
+        state["status"] = "ERROR"
+        return state
     new_id = generate_request_id()
     state["request_id"] = new_id
     state["status"]     = "NEW"
     
     new_shipment = Shipment(
         request_id=new_id,
-        thread_id=current_message_id, # This is the "head" / latest message for next lookup
+        thread_id=current_message_id,  # Set conversation root (NEVER changes)
+        last_message_id=current_message_id,  # Set latest message (always updated)
         customer_email=customer_email,
         subject=state.get("subject"),
         body=state.get("body", ""),
@@ -107,10 +152,25 @@ async def generate_reqid(state: AgentState) -> AgentState:
         status="NEW",
         message_ids=[current_message_id] if current_message_id else [],
         attachments=state.get("attachments", []),
-        messages=[new_message]
+        messages=[_build_message(state)]
     )
     await create_shipment(new_shipment)
     
-    logger.info("Step 4 — generated and stored new request_id: %s", new_id)
+    logger.info("Step 6 — generated and stored new request_id: %s", new_id)
     return state
+
+
+def _build_message(state: AgentState):
+    """Helper to build Message object from state."""
+    from models.shipment import Message
+    is_operator = state.get("is_operator", False)
+    return Message(
+        message_id=state.get("thread_id", ""),
+        sender_email=state.get("customer_email", ""),
+        sender_type="operator" if is_operator else "customer",
+        direction="incoming",
+        subject=state.get("subject"),
+        body=state.get("body", ""),
+        attachments=state.get("attachments", [])
+    )
 

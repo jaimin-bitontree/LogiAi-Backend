@@ -3,7 +3,6 @@ from agent.state import AgentState
 from agent.nodes.parse_node import parser_node
 from agent.nodes.language_node import language_node
 from agent.nodes.intent_node import intent_node
-from models.shipment import LanguageMetadata, ValidationResult, Attachment
 from agent.nodes.extraction_node import extraction_node
 from agent.nodes.missing_info_node import missing_info_node
 from agent.nodes.complete_info_node import complete_info_node
@@ -47,6 +46,10 @@ builder.add_edge("reqid", "extraction")
 
 def route_after_extraction(state: AgentState):
     """Route based on whether all required fields were found."""
+    # Route to pricing node if is_operator is True
+    if state.get("is_operator"):
+        return "pricing"
+        
     val_res = state.get("validation_result")
     status = state.get("status")
 
@@ -78,6 +81,7 @@ builder.add_conditional_edges(
     }
 )
 
+# Terminal Edges
 builder.add_edge("missing_info",  END)
 builder.add_edge("complete_info", END)
 builder.add_edge("confirmation",  END)
@@ -89,9 +93,9 @@ def create_initial_state(raw_email: bytes) -> AgentState:
     return {
         "raw_email": raw_email,
         "request_id":       "",
-        "thread_id":        None,
+        "thread_id":        None,  # Conversation root (set once)
         "conversation_id":  None,
-        "last_message_id":  None,
+        "last_message_id": None,  # Current head (always updated)
         "customer_email":   "",
         "subject":          None,
         "message_ids":      [],      
@@ -106,6 +110,8 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "validation_result":  ValidationResult(),
         "pricing_details":    [],
         "messages":           [],
+        "is_operator":        False,
+        "shipment_found":     False,
         "final_document":     None,
     }
 
@@ -122,16 +128,21 @@ async def run_workflow(raw_email: bytes) -> AgentState:
         async for step in graph.astream(initial_state):
             node_name = list(step.keys())[0]
             node_state = step[node_name]
+            
+            # Print node completion without raw_email
             print(f"\n✅ After node: [{node_name}]")
-            print(node_state)
+            
+            # Print only relevant fields (exclude raw_email to avoid clutter)
+            debug_state = {k: v for k, v in node_state.items() if k != 'raw_email'}
+            print(f"  request_id: {debug_state.get('request_id', '')}")
+            print(f"  status: {debug_state.get('status', '')}")
+            print(f"  is_operator: {debug_state.get('is_operator', False)}")
+            print(f"  shipment_found: {debug_state.get('shipment_found', False)}")
+            
             final_state = node_state
 
         return final_state
 
-        if result:
-            print(f"✅ Processed: {result.get('subject')}")
-        else:
-            print("⚠️ Workflow failed, result is None")
-        return result
     except Exception as e:
         print(f"❌ Workflow execution failed: {e}")
+        return None

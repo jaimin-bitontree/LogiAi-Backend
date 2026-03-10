@@ -93,7 +93,17 @@ Respond ONLY with valid JSON matching the schema above.
 def extract_pricing_data(email_body: str) -> tuple[Optional[PricingSchema], Optional[str]]:
     """
     Calls Groq LLM to extract structured pricing details and request_id from raw text.
+    
+    Returns:
+        tuple: (PricingSchema or None, request_id or None)
+        
+    Raises:
+        ValueError: If email body is empty or LLM returns invalid data
+        RuntimeError: If LLM API call fails
     """
+    if not email_body or not email_body.strip():
+        raise ValueError("Empty email body provided for pricing extraction")
+    
     try:
         response = client.chat.completions.create(
             model=settings.EXTRACTION_MODEL,
@@ -107,12 +117,18 @@ def extract_pricing_data(email_body: str) -> tuple[Optional[PricingSchema], Opti
 
         content = response.choices[0].message.content
         data = json.loads(content)
-        
         request_id = data.pop("request_id", None)
+        pricing_schema = PricingSchema(**data)
         
-        # Validate with Pydantic
-        return PricingSchema(**data), request_id
+        return pricing_schema, request_id
 
+    except json.JSONDecodeError as e:
+        raise ValueError(f"LLM returned invalid JSON: {e}")
+    except KeyError as e:
+        raise ValueError(f"Missing expected field in LLM response: {e}")
+    except ValueError as e:
+        raise ValueError(f"Invalid pricing data returned by LLM: {e}")
     except Exception as e:
-        logger.error(f"Pricing extraction failed: {e}")
-        return None, None
+        raise RuntimeError(f"Pricing extraction failed: {e}")
+    finally:
+        logger.debug(f"[pricing_service] extract_pricing_data() | body: '{email_body[:100]}...')")

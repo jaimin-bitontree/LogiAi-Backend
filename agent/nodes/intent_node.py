@@ -1,6 +1,9 @@
+import logging
 from agent.state import AgentState
 from models.shipment import IntentResult
 from services.intent_service import detect_intent
+
+logger = logging.getLogger(__name__)
 
 
 # ===================================================
@@ -17,7 +20,7 @@ def intent_node(state: AgentState) -> dict:
         state.get("translated_body", ""),
     )
 
-    _print_intent_result(state.get("translated_subject", ""), result)
+    _log_intent_result(state.get("translated_subject", ""), result)
 
     # Only update request_id if one was found in the email AND state doesn't have one yet
     update = {"intent": result.intent.value}
@@ -32,10 +35,10 @@ def intent_node(state: AgentState) -> dict:
 # CONSOLE PRINT HELPER
 # ===================================================
 
-def _print_intent_result(subject: str, result: IntentResult) -> None:
-    print("\n" + "=" * 60)
-    print("[intent_node] RESULT")
-    print(f"  Subject    : {subject.strip() or '(no subject)'}")
-    print(f"  Intent     : {result.intent.value}")
-    print(f"  Request ID : {result.request_id or 'NOT FOUND'}")
-    print("=" * 60)
+def _log_intent_result(subject: str, result: IntentResult) -> None:
+    logger.info("=" * 60)
+    logger.info("[intent_node] RESULT")
+    logger.info(f"Subject    : {subject.strip() or '(no subject)'}")
+    logger.info(f"Intent     : {result.intent.value}")
+    logger.info(f"Request ID : {result.request_id or 'NOT FOUND'}")
+    logger.info("=" * 60)

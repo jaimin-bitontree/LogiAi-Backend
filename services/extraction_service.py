@@ -13,6 +13,9 @@ from core.constants import (
     REQUIRED_FIELDS,
     OPTIONAL_FIELDS,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -121,7 +124,7 @@ def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
     except Exception as e:
         raise RuntimeError(f"Extraction failed: {e}")
     finally:
-        print(f"[extraction_service] extract_fields() | subject: '{subject[:50]}'")
+        logger.debug(f"extract_fields() | subject: '{subject[:50]}'")
 
 
 def extract_missing_fields(
@@ -215,16 +218,16 @@ Return JSON with ALL fields (set to null if not mentioned):
 
         raw_text = response.choices[0].message.content
         if not raw_text:
-            print(f"[extraction_service] ERROR: LLM returned empty content")
+            logger.error("LLM returned empty content")
             raise ValueError("LLM returned empty content")
         
         raw_text = raw_text.strip()
-        print(f"[extraction_service] LLM raw response: {raw_text[:200]}")
+        logger.debug(f"LLM raw response: {raw_text[:200]}")
         
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
         
         if not raw_text:
-            print(f"[extraction_service] ERROR: Empty after cleaning")
+            logger.error("Empty after cleaning")
             raise ValueError("Empty response after cleaning markdown")
         
         parsed = json.loads(raw_text)
@@ -233,13 +236,13 @@ Return JSON with ALL fields (set to null if not mentioned):
         return {k: v for k, v in parsed.items() if v is not None}
 
     except json.JSONDecodeError as e:
-        print(f"[extraction_service] JSON decode error: {e}")
-        print(f"[extraction_service] Raw text was: {raw_text if 'raw_text' in locals() else 'N/A'}")
+        logger.error(f"JSON decode error: {e}")
+        logger.debug(f"Raw text was: {raw_text if 'raw_text' in locals() else 'N/A'}")
         raise ValueError(f"Invalid JSON from LLM: {e}")
     except ValueError:
         raise
     except Exception as e:
-        print(f"[extraction_service] Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}")
         raise RuntimeError(f"Missing field extraction failed: {e}")
     finally:
-        print(f"[extraction_service] extract_missing_fields() | missing: {missing_fields}")
+        logger.debug(f"extract_missing_fields() | missing: {missing_fields}")

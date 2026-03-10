@@ -35,11 +35,17 @@ def context_builder_node(state: AgentState) -> dict:
     else:
         missing_fields = []
 
-    # ONLY provide a tiny snippet (200 chars) for intent verification.
-    # The tools will fetch the full body from the DB internally.
-    body_snippet = body[:200] + ("..." if len(body) > 200 else "")
+    # For operator_pricing intent, provide the FULL body since we need to extract pricing data
+    # For other intents, provide only a snippet since tools fetch full data from DB
+    if intent == "operator_pricing":
+        body_snippet = body  # Full body needed for pricing extraction
+    else:
+        body_snippet = body[:200] + ("..." if len(body) > 200 else "")
 
-    print(f"\n[context_builder_node] Seeding agent with intent={intent} | request_id={request_id}")
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"[context_builder_node] Seeding agent with intent={intent} | request_id={request_id}")
     
     directive = "EXTRACT ALL FIELDS" if intent == "new_request" else f"EXTRACT MISSING FIELDS: {missing_fields}"
     
@@ -59,5 +65,5 @@ INSTRUCTIONS:
 Use the appropriate extraction tool for the '{intent}' intent now."""
     
     msg = HumanMessage(content=seed_message.strip())
-    print(f"[context_builder_node] SEED MESSAGE:\n{msg.content}\n")
+    logger.debug(f"[context_builder_node] SEED MESSAGE:\n{msg.content}\n")
     return {"messages": [msg]}

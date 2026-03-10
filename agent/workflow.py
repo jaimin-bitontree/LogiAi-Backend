@@ -10,8 +10,9 @@ Agentic loop (LLM decides what tool to call next):
   agent ←→ tools  (loops until LLM has no more tool calls)
 """
 
+import logging
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode
+# from langgraph.prebuilt import ToolNode  # Not available in this version
 
 from agent.state import AgentState
 from agent.nodes.parse_node import parser_node
@@ -21,6 +22,73 @@ from agent.nodes.reqid_generator_node import generate_reqid
 from agent.nodes.context_builder_node import context_builder_node
 from agent.agent_node import call_agent, TOOLS
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
+
+logger = logging.getLogger(__name__)
+
+
+# Custom ToolNode implementation since prebuilt is not available
+class ToolNode:
+    def __init__(self, tools):
+        self.tools = {tool.name: tool for tool in tools}
+    
+    async def __call__(self, state):
+        messages = state["messages"]
+        last_message = messages[-1]
+        
+        if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+            return {"messages": []}
+        
+        tool_messages = []
+        email_tool_executed = False
+        
+        for tool_call in last_message.tool_calls:
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"]
+            tool_id = tool_call["id"]
+            
+            # Check if this is an email-sending tool
+            email_sending_tools = [
+                "send_missing_info_email",
+                "send_complete_info_emails", 
+                "send_status_update",
+                "calculate_and_send_pricing",
+                "process_shipment_confirmation",
+                "cancel_shipment"
+            ]
+            
+            if tool_name in email_sending_tools:
+                email_tool_executed = True
+            
+            if tool_name in self.tools:
+                try:
+                    tool = self.tools[tool_name]
+                    result = await tool.ainvoke(tool_args)
+                    
+                    from langchain_core.messages import ToolMessage
+                    tool_message = ToolMessage(
+                        content=str(result),
+                        tool_call_id=tool_id
+                    )
+                    tool_messages.append(tool_message)
+                    
+                    # Log email tool execution
+                    if email_tool_executed:
+                        logger.info(f"[ToolNode] Email tool '{tool_name}' executed successfully")
+                        
+                except Exception as e:
+                    from langchain_core.messages import ToolMessage
+                    error_message = ToolMessage(
+                        content=f"Error: {str(e)}",
+                        tool_call_id=tool_id
+                    )
+                    tool_messages.append(error_message)
+        
+        # Add a flag to state if email tool was executed
+        result = {"messages": tool_messages}
+        if email_tool_executed:
+            result["email_tool_executed"] = True
+            
+        return result
 
 # ── Build graph ───────────────────────────────────────────────
 builder = StateGraph(AgentState)
@@ -50,21 +118,64 @@ def should_continue(state: AgentState) -> str:
     Also END if an email notification tool was just called."""
     messages = state["messages"]
     
-    # Check if last tool call was an email notification
-    if len(messages) >= 2:
-        second_last = messages[-2]
-        if hasattr(second_last, "tool_calls") and second_last.tool_calls:
-            for tool_call in second_last.tool_calls:
-                tool_name = tool_call.get("name", "")
-                if "email" in tool_name.lower():
-                    # Email was just sent, stop the loop
-                    print("[workflow] Email tool was called, ending workflow")
-                    return END
+    if not messages:
+        return END
     
-    # Normal check
+    # Check if email tool was just executed (set by ToolNode)
+    if state.get("email_tool_executed", False):
+        logger.info(f"[workflow] Email tool executed flag detected, ending workflow")
+        return END
+    
     last_message = messages[-1]
+    
+    # Check if we just completed an email tool by looking at ToolMessage content
+    if hasattr(last_message, 'content') and hasattr(last_message, 'tool_call_id'):
+        content = str(last_message.content)
+        # Check for email tool completion indicators
+        email_indicators = [
+            "Email sent to",
+            "Both emails sent",
+            "Missing info email sent",
+            "Status update sent",
+            "Confirmation email sent",
+            "Cancellation email sent",
+            "Pricing email sent"
+        ]
+        
+        if any(indicator in content for indicator in email_indicators):
+            logger.info(f"[workflow] Email tool completed (detected from content), ending workflow")
+            return END
+    
+    # If agent wants to call more tools, continue
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        # Check if it's trying to call an email-sending tool that was recently called (prevent loops)
+        if len(messages) >= 3:  # Need at least: system, agent_call, tool_result
+            # Look for recent tool calls to prevent duplicates
+            recent_tool_calls = []
+            for msg in messages[-8:]:  # Check last 8 messages for tool calls
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    for tool_call in msg.tool_calls:
+                        recent_tool_calls.append(tool_call.get("name", ""))
+            
+            # Email-sending tools that should not be called repeatedly
+            email_sending_tools = [
+                "send_missing_info_email",
+                "send_complete_info_emails", 
+                "send_status_update",
+                "calculate_and_send_pricing",
+                "process_shipment_confirmation",
+                "cancel_shipment"
+            ]
+            
+            # If we're about to call an email-sending tool that was recently called, stop
+            for tool_call in last_message.tool_calls:
+                tool_name = tool_call.get("name", "")
+                if tool_name in email_sending_tools and recent_tool_calls.count(tool_name) >= 2:
+                    logger.warning(f"[workflow] Preventing duplicate email-sending tool call: {tool_name}")
+                    return END
+        
         return "tools"
+    
     return END
 
 builder.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
@@ -97,6 +208,9 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "pricing_details":     [],
         "messages":            [],   # Seeded properly by context_builder_node
         "final_document":      None,
+        "shipment_found":      False,
+        "is_operator":         False,
+        "email_tool_executed": False,
     }
 
 
@@ -115,16 +229,16 @@ async def run_workflow(raw_email: bytes) -> AgentState:
         async for step in graph.astream(initial_state):
             node_name  = list(step.keys())[0]
             node_state = step[node_name]
-            print(f"\n✅ After node: [{node_name}]")
+            logger.info(f"After node: [{node_name}]")
             final_state = node_state
 
         if final_state:
-            print(f"✅ Processed: {final_state.get('subject')}")
+            logger.info(f"Processed: {final_state.get('subject')}")
         else:
-            print("⚠️  Workflow returned no final state")
+            logger.warning("Workflow returned no final state")
 
         return final_state
 
     except Exception as e:
-        print(f"❌ Workflow execution failed: {e}")
+        logger.error(f"Workflow execution failed: {e}")
         raise

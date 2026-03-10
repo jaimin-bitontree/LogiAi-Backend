@@ -96,7 +96,7 @@ async def extract_shipment_fields(request_id: str) -> dict:
         "status":            "NEW",
     })
 
-    _print_extraction_result(email_subject, schema_dict, validation)
+    _log_extraction_result(email_subject, schema_dict, validation)
 
     logger.info(
         "[extraction_tool] Done | request_id=%s | is_valid=%s | missing=%s",
@@ -185,25 +185,25 @@ async def extract_missing_field_values(
     }
 
 
-def _print_extraction_result(subject: str, schema_dict: dict, validation: dict) -> None:
-    """Console output for debugging extraction results."""
-    print("\n" + "=" * 60)
-    print("[extraction_tool] RESULT")
-    print(f"  Subject : {subject.strip() or '(no subject)'}")
-    print(f"  Status  : {'✅ Complete' if validation['is_valid'] else '⚠️  Missing fields'}")
+def _log_extraction_result(subject: str, schema_dict: dict, validation: dict) -> None:
+    """Log extraction results for debugging."""
+    logger.info("=" * 60)
+    logger.info("[extraction_tool] RESULT")
+    logger.info(f"Subject : {subject.strip() or '(no subject)'}")
+    logger.info(f"Status  : {'Complete' if validation['is_valid'] else 'Missing fields'}")
 
-    print("\n  ── Required fields ──")
+    logger.info("── Required fields ──")
     for field in REQUIRED_FIELDS:
         value  = schema_dict.get(field)
         status = "✅" if value is not None else "❌"
-        print(f"    {status} {field}: {value}")
+        logger.info(f"{status} {field}: {value}")
 
-    print("\n  ── Optional fields ──")
+    logger.info("── Optional fields ──")
     for field in OPTIONAL_FIELDS:
         value  = schema_dict.get(field)
         status = "✅" if value is not None else "➖"
-        print(f"    {status} {field}: {value}")
+        logger.info(f"{status} {field}: {value}")
 
     if validation["missing_fields"]:
-        print(f"\n  Missing required: {validation['missing_fields']}")
-    print("=" * 60)
+        logger.info(f"Missing required: {validation['missing_fields']}")
+    logger.info("=" * 60)

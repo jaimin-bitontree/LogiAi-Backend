@@ -63,9 +63,9 @@ async def update_shipment_data(state: dict) -> None:
     )
 
     if result.matched_count == 0:
-        print(f"⚠️  No shipment found with request_id={request_id}")
+        logger.warning(f"No shipment found with request_id={request_id}")
     else:
-        print(f"✅ Shipment updated | request_id: {request_id}")
+        logger.info(f"Shipment updated | request_id: {request_id}")
 
 
 async def push_message_log(request_id: str, message: dict, sent_message_id: str, status: str = "MISSING_INFO") -> None:
@@ -103,9 +103,9 @@ async def push_message_log(request_id: str, message: dict, sent_message_id: str,
     )
 
     if result.matched_count == 0:
-        print(f"⚠️  No shipment found with request_id={request_id}")
+        logger.warning(f"No shipment found with request_id={request_id}")
     else:
-        print(f"✅ Message log pushed | request_id: {request_id} | message_id: {sent_message_id}")
+        logger.info(f"Message log pushed | request_id: {request_id} | message_id: {sent_message_id}")
 
 
 async def update_shipment(request_id: str, updates: dict) -> None:
@@ -125,9 +125,9 @@ async def update_shipment(request_id: str, updates: dict) -> None:
     )
 
     if result.matched_count == 0:
-        print(f"⚠️  No shipment found with request_id={request_id}")
+        logger.warning(f"No shipment found with request_id={request_id}")
     else:
-        print(f"✅ Shipment updated | request_id: {request_id} | fields: {list(updates.keys())}")
+        logger.info(f"Shipment updated | request_id: {request_id} | fields: {list(updates.keys())}")
 
 
 async def get_request_data(request_id: str) -> dict:

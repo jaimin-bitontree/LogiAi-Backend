@@ -1,7 +1,9 @@
+import logging
 from groq import Groq
 from langdetect import detect_langs, LangDetectException
 from config import settings
 
+logger = logging.getLogger(__name__)
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 
@@ -17,7 +19,7 @@ def detect_language(text: str) -> tuple[str, float]:
     except LangDetectException:
         return "en", 0.0
     except Exception as e:
-        print(f"❌ langdetect error: {e}")
+        logger.error(f"langdetect error: {e}")
         return "en", 0.0
 
     if confidence < settings.LANGUAGE_CONFIDENCE_THRESHOLD:
@@ -46,7 +48,7 @@ def detect_language_with_llm(text: str) -> tuple[str, float]:
         lang = response.choices[0].message.content.strip().lower()
         return lang, 1.0
     except Exception as e:
-        print(f"❌ LLM language detection failed: {e}")
+        logger.error(f"LLM language detection failed: {e}")
         return "en", 0.0
 
 
@@ -69,5 +71,5 @@ def translate_with_llm(text: str) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"❌ LLM translation failed: {e}")
+        logger.error(f"LLM translation failed: {e}")
         return text   # return original if translation fails

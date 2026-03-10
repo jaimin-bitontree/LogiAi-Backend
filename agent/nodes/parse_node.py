@@ -11,6 +11,9 @@ from models.shipment import Attachment
 from agent.state import AgentState
 from config import settings
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def parser_node(state: AgentState) -> AgentState:
@@ -50,7 +53,7 @@ async def parser_node(state: AgentState) -> AgentState:
     
     if message_id and message_id not in message_ids:
         message_ids.append(message_id)
-        print(message_ids)
+        logger.debug(f"Message IDs: {message_ids}")
 
     # Check if operator
     is_operator = customer_email.lower() == settings.OPERATOR_EMAIL.lower()
@@ -60,9 +63,9 @@ async def parser_node(state: AgentState) -> AgentState:
     shipment_found = False
     
     if is_operator:
-        print(f"[parse_node] Operator email detected")
-        print(f"[parse_node] Subject: {subject}")
-        print(f"[parse_node] In-Reply-To: {parent_message_id}")
+        logger.info(f"[parse_node] Operator email detected")
+        logger.info(f"[parse_node] Subject: {subject}")
+        logger.info(f"[parse_node] In-Reply-To: {parent_message_id}")
         
         # Strategy 1: Lookup by In-Reply-To header (reply email - most reliable)
         if parent_message_id:
@@ -70,8 +73,8 @@ async def parser_node(state: AgentState) -> AgentState:
             shipment = await find_by_any_message_id(parent_message_id)
             
             if shipment:
-                print(f"[parse_node] ✅ Found shipment by In-Reply-To: {parent_message_id}")
-                print(f"[parse_node] ✅ Matched request_id: {shipment.request_id}")
+                logger.info(f"[parse_node] ✅ Found shipment by In-Reply-To: {parent_message_id}")
+                logger.info(f"[parse_node] ✅ Matched request_id: {shipment.request_id}")
                 shipment_found = True
                 request_id = shipment.request_id
                 
@@ -85,18 +88,18 @@ async def parser_node(state: AgentState) -> AgentState:
         
         # Strategy 2: Extract request_id from subject line (separate email)
         if not shipment_found:
-            print(f"[parse_node] No In-Reply-To match, trying request_id extraction from subject...")
+            logger.info(f"[parse_node] No In-Reply-To match, trying request_id extraction from subject...")
             match = re.search(r'REQ-\d{4}-\d+', subject)
             
             if match:
                 request_id = match.group(0)
-                print(f"[parse_node] ✅ Extracted request_id from subject: {request_id}")
+                logger.info(f"[parse_node] ✅ Extracted request_id from subject: {request_id}")
                 
                 from services.shipment_service import find_by_request_id
                 shipment = await find_by_request_id(request_id)
                 
                 if shipment:
-                    print(f"[parse_node] ✅ Found shipment by request_id: {request_id}")
+                    logger.info(f"[parse_node] ✅ Found shipment by request_id: {request_id}")
                     shipment_found = True
                     
                     # Hydrate state with shipment data
@@ -107,22 +110,22 @@ async def parser_node(state: AgentState) -> AgentState:
                     state["pricing_details"] = shipment.pricing_details
                     state["messages"] = shipment.messages
                 else:
-                    print(f"[parse_node] ❌ No shipment found for request_id: {request_id}")
+                    logger.warning(f"[parse_node] ❌ No shipment found for request_id: {request_id}")
         
         # Strategy 3: Extract request_id from body (fallback)
         if not shipment_found:
-            print(f"[parse_node] No match in subject, trying request_id extraction from body...")
+            logger.info(f"[parse_node] No match in subject, trying request_id extraction from body...")
             match = re.search(r'REQ-\d{4}-\d+', clean_body)
             
             if match:
                 request_id = match.group(0)
-                print(f"[parse_node] ✅ Extracted request_id from body: {request_id}")
+                logger.info(f"[parse_node] ✅ Extracted request_id from body: {request_id}")
                 
                 from services.shipment_service import find_by_request_id
                 shipment = await find_by_request_id(request_id)
                 
                 if shipment:
-                    print(f"[parse_node] ✅ Found shipment by request_id: {request_id}")
+                    logger.info(f"[parse_node] ✅ Found shipment by request_id: {request_id}")
                     shipment_found = True
                     
                     # Hydrate state with shipment data
@@ -133,14 +136,14 @@ async def parser_node(state: AgentState) -> AgentState:
                     state["pricing_details"] = shipment.pricing_details
                     state["messages"] = shipment.messages
                 else:
-                    print(f"[parse_node] ❌ No shipment found for request_id: {request_id}")
+                    logger.warning(f"[parse_node] ❌ No shipment found for request_id: {request_id}")
             else:
-                print(f"[parse_node] ❌ No request_id pattern found in body")
+                logger.warning(f"[parse_node] ❌ No request_id pattern found in body")
         
         # Final check
         if not shipment_found:
-            print(f"[parse_node] ❌ Cannot match operator email to any shipment")
-            print(f"[parse_node] Tried: In-Reply-To, subject line, body text")
+            logger.error(f"[parse_node] ❌ Cannot match operator email to any shipment")
+            logger.error(f"[parse_node] Tried: In-Reply-To, subject line, body text")
 
     # Update state
     state.update({

@@ -11,10 +11,8 @@ from db.client import get_db
 
 logger = logging.getLogger(__name__)
 
-
-# -------------------------------------------------------------
 # LANGGRAPH NODE
-# -------------------------------------------------------------
+
 
 async def confirmation_node(state: AgentState) -> dict:
     """
@@ -23,23 +21,23 @@ async def confirmation_node(state: AgentState) -> dict:
     Steps:
       1. Read conversation_id (In-Reply-To) from state
       2. Fetch shipment from DB using last_message_id == conversation_id
-      3. Check status == "PRICING_SENT" -- if not, skip silently
+      3. Check status == "QUOTED" -- if not, skip silently
       4. Send notification email to operator
          -> push log 1 to DB
-      5. Update DB status -> "ACCEPTED"
+      5. Update DB status -> "CONFIRMED"
       6. Send thank-you email to customer
          -> push log 2 to DB
       7. Push incoming customer confirmation as log 3 to DB
       8. Return updated state
     """
 
-    # -- Step 1: Read conversation_id from state ---------------
+    # Step 1: Read conversation_id from state
     conversation_id = state.get("conversation_id")
     if not conversation_id:
         logger.warning("[confirmation_node] No conversation_id in state -- skipping.")
         return {}
 
-    # -- Step 2: Fetch shipment from DB ------------------------
+    # Step 2: Fetch shipment from DB
     db = get_db()
     shipment = await db.shipments.find_one({"last_message_id": conversation_id})
 
@@ -50,27 +48,27 @@ async def confirmation_node(state: AgentState) -> dict:
         )
         return {}
 
-    request_id     = shipment.get("request_id", "")
+    request_id = shipment.get("request_id", "")
     current_status = shipment.get("status", "")
-    request_data   = shipment.get("request_data", {})
+    request_data = shipment.get("request_data", {})
     customer_email = shipment.get("customer_email", "")
-    subject        = shipment.get("subject") or "Your Shipment"
+    subject = shipment.get("subject") or "Your Shipment"
 
     logger.info(
         "[confirmation_node] Found shipment | request_id=%s | status=%s",
         request_id, current_status
     )
 
-    # -- Local variables ---------------------------------------
+    # Local variables
     operator_email = settings.OPERATOR_EMAIL
-    all_fields     = REQUIRED_FIELDS + OPTIONAL_FIELDS
-    customer_name  = (
+    all_fields = REQUIRED_FIELDS + OPTIONAL_FIELDS
+    customer_name = (
         request_data.get("required", {}).get("customer_name")
         or request_data.get("customer_name")
         or "Customer"
     )
 
-    # -- Step 3: Check status ----------------------------------
+    # Step 3: Check status
     if current_status == "PRICING_PENDING":
         logger.info(
             "[confirmation_node] Status is PRICING_PENDING -- sending pricing reminder to operator | request_id=%s",
@@ -78,21 +76,21 @@ async def confirmation_node(state: AgentState) -> dict:
         )
 
         reminder_html = build_email(
-            email_type      = "pricing",
-            customer_name   = "Operator",
-            request_id      = request_id,
-            request_data    = request_data,
-            all_fields      = all_fields,
-            pricing_details = [],
+            email_type="pricing",
+            customer_name="Operator",
+            request_id=request_id,
+            request_data=request_data,
+            all_fields=all_fields,
+            pricing_details=[],
         )
         reminder_subject = f"[REMINDER] Pricing Required -- {request_id}"
 
         try:
             reminder_msg_id = send_email(
-                to         = operator_email,
-                subject    = reminder_subject,
-                body_html  = reminder_html,
-                request_id = request_id
+                to=operator_email,
+                subject=reminder_subject,
+                body_html=reminder_html,
+                request_id=request_id
             )
         except RuntimeError as e:
             logger.error(
@@ -102,21 +100,21 @@ async def confirmation_node(state: AgentState) -> dict:
             raise RuntimeError(f"Operator reminder email failed for request_id={request_id}") from e
 
         reminder_log = Message(
-            message_id   = reminder_msg_id,
-            sender_email = settings.GMAIL_ADDRESS,
-            sender_type  = "system",
-            direction    = "outgoing",
-            subject      = reminder_subject,
-            body         = "Pricing reminder sent to operator.",
-            received_at  = datetime.utcnow()
+            message_id=reminder_msg_id,
+            sender_email=settings.GMAIL_ADDRESS,
+            sender_type="system",
+            direction="outgoing",
+            subject=reminder_subject,
+            body="Pricing reminder sent to operator.",
+            received_at=datetime.utcnow()
         )
 
         try:
             await push_message_log(
-                request_id      = request_id,
-                message         = reminder_log.model_dump(),
-                sent_message_id = reminder_msg_id,
-                status          = "PRICING_PENDING",
+                request_id=request_id,
+                message=reminder_log.model_dump(),
+                sent_message_id=reminder_msg_id,
+                status="PRICING_PENDING",
             )
         except Exception as e:
             logger.error(
@@ -131,7 +129,7 @@ async def confirmation_node(state: AgentState) -> dict:
         )
 
         existing_message_ids = list(state.get("message_ids", []))
-        existing_messages    = list(state.get("messages", []))
+        existing_messages = list(state.get("messages", []))
 
         return {
             "status":      "PRICING_PENDING",
@@ -140,22 +138,50 @@ async def confirmation_node(state: AgentState) -> dict:
             "messages":    existing_messages + [reminder_log],
         }
 
-    if current_status != "PRICING_SENT":
+    if current_status != "QUOTED":
         logger.warning(
-            "[confirmation_node] Status is '%s', expected 'PRICING_SENT' -- skipping.",
+            "[confirmation_node] Status is '%s', expected 'QUOTED' -- skipping.",
             current_status
         )
         return {}
 
-    # -- Step 4: Send notification email to operator -----------
+    # Step 4: incoming customer confirmation email
+    incoming_msg_id = state.get("message_id") or conversation_id
+    incoming_body = state.get("body") or "Customer confirmed the shipment."
+
+    customer_confirmation_log = Message(
+        message_id=incoming_msg_id,
+        sender_email=customer_email,
+        sender_type="customer",
+        direction="incoming",
+        subject=state.get("subject") or subject,
+        body=incoming_body,
+        received_at=datetime.utcnow()
+    )
+
+    try:
+        await push_message_log(
+            request_id=request_id,
+            message=customer_confirmation_log.model_dump(),
+            sent_message_id=incoming_msg_id,
+            status="CONFIRMED",
+        )
+    except Exception as e:
+        logger.error(
+            "[confirmation_node] DB push failed for incoming log request_id=%s: %s",
+            request_id, e, exc_info=True
+        )
+        raise RuntimeError(f"DB push failed for incoming log, request_id={request_id}") from e
+
+    # Step 5: Send notification email to operator
     operator_html = build_email(
-        email_type    = "status",
-        customer_name = "Operator",
-        request_id    = request_id,
-        request_data  = request_data,
-        all_fields    = all_fields,
-        status        = "ACCEPTED",
-        message       = (
+        email_type="status",
+        customer_name="Operator",
+        request_id=request_id,
+        request_data=request_data,
+        all_fields=all_fields,
+        status="CONFIRMED",
+        message=(
             f"The customer ({customer_name}) has confirmed the shipment. "
             "Please proceed with the logistics arrangements."
         ),
@@ -164,10 +190,10 @@ async def confirmation_node(state: AgentState) -> dict:
 
     try:
         operator_msg_id = send_email(
-            to         = operator_email,
-            subject    = operator_subject,
-            body_html  = operator_html,
-            request_id = request_id
+            to=operator_email,
+            subject=operator_subject,
+            body_html=operator_html,
+            request_id=request_id
         )
     except RuntimeError as e:
         logger.error(
@@ -176,23 +202,23 @@ async def confirmation_node(state: AgentState) -> dict:
         )
         raise RuntimeError(f"Operator email send failed for request_id={request_id}") from e
 
-    # Log 1 -- operator notification
+    # operator notification
     operator_message_log = Message(
-        message_id   = operator_msg_id,
-        sender_email = settings.GMAIL_ADDRESS,
-        sender_type  = "system",
-        direction    = "outgoing",
-        subject      = operator_subject,
-        body         = "Operator notified -- customer confirmed the shipment.",
-        received_at  = datetime.utcnow()
+        message_id=operator_msg_id,
+        sender_email=settings.GMAIL_ADDRESS,
+        sender_type="system",
+        direction="outgoing",
+        subject=operator_subject,
+        body="Operator notified -- customer confirmed the shipment.",
+        received_at=datetime.utcnow()
     )
 
     try:
         await push_message_log(
-            request_id      = request_id,
-            message         = operator_message_log.model_dump(),
-            sent_message_id = operator_msg_id,
-            status          = "ACCEPTED",
+            request_id=request_id,
+            message=operator_message_log.model_dump(),
+            sent_message_id=operator_msg_id,
+            status="CONFIRMED",
         )
     except Exception as e:
         logger.error(
@@ -201,11 +227,11 @@ async def confirmation_node(state: AgentState) -> dict:
         )
         raise RuntimeError(f"DB push failed for operator log, request_id={request_id}") from e
 
-    # -- Step 5: Update DB status -> ACCEPTED ------------------
+    # Step 6: Update DB status -> CONFIRMED
     try:
         await update_shipment_data({
             "request_id": request_id,
-            "status":     "ACCEPTED",
+            "status":     "CONFIRMED",
         })
     except Exception as e:
         logger.error(
@@ -214,20 +240,20 @@ async def confirmation_node(state: AgentState) -> dict:
         )
         raise RuntimeError(f"DB status update failed for request_id={request_id}") from e
 
-    # -- Step 6: Send thank-you email to customer --------------
+    # Step 7: Send thank-you email to customer
     customer_html = build_email(
-        email_type    = "status",
-        customer_name = customer_name,
-        request_id    = request_id,
-        request_data  = request_data,
-        all_fields    = all_fields,
-        status        = "ACCEPTED",
-        message       = (
+        email_type="status",
+        customer_name=customer_name,
+        request_id=request_id,
+        request_data=request_data,
+        all_fields=all_fields,
+        status="CONFIRMED",
+        message=(
             "Thank you for confirming your shipment with LogiAI. "
             "We are delighted to have you on board and will handle your shipment "
             "with the utmost care and professionalism."
         ),
-        next_steps    = [
+        next_steps=[
             "Our team will coordinate all logistics for your shipment",
             "You will receive regular updates on the shipment progress",
             "Feel free to contact us anytime with your Request ID for any queries",
@@ -237,10 +263,10 @@ async def confirmation_node(state: AgentState) -> dict:
 
     try:
         customer_msg_id = send_email(
-            to         = customer_email,
-            subject    = customer_subject,
-            body_html  = customer_html,
-            request_id = request_id
+            to=customer_email,
+            subject=customer_subject,
+            body_html=customer_html,
+            request_id=request_id
         )
     except RuntimeError as e:
         logger.error(
@@ -249,23 +275,23 @@ async def confirmation_node(state: AgentState) -> dict:
         )
         raise RuntimeError(f"Customer email send failed for request_id={request_id}") from e
 
-    # Log 2 -- customer thank-you
+    # customer thank-you
     customer_message_log = Message(
-        message_id   = customer_msg_id,
-        sender_email = settings.GMAIL_ADDRESS,
-        sender_type  = "system",
-        direction    = "outgoing",
-        subject      = customer_subject,
-        body         = "Thank-you email sent to customer -- shipment confirmed.",
-        received_at  = datetime.utcnow()
+        message_id=customer_msg_id,
+        sender_email=settings.GMAIL_ADDRESS,
+        sender_type="system",
+        direction="outgoing",
+        subject=customer_subject,
+        body="Thank-you email sent to customer -- shipment confirmed.",
+        received_at=datetime.utcnow()
     )
 
     try:
         await push_message_log(
-            request_id      = request_id,
-            message         = customer_message_log.model_dump(),
-            sent_message_id = customer_msg_id,
-            status          = "ACCEPTED",
+            request_id=request_id,
+            message=customer_message_log.model_dump(),
+            sent_message_id=customer_msg_id,
+            status="CONFIRMED",
         )
     except Exception as e:
         logger.error(
@@ -274,48 +300,20 @@ async def confirmation_node(state: AgentState) -> dict:
         )
         raise RuntimeError(f"DB push failed for customer log, request_id={request_id}") from e
 
-    # -- Step 7: Log 3 -- incoming customer confirmation email -
-    incoming_msg_id = state.get("message_id") or conversation_id
-    incoming_body   = state.get("body") or "Customer confirmed the shipment."
-
-    customer_confirmation_log = Message(
-        message_id   = incoming_msg_id,
-        sender_email = customer_email,
-        sender_type  = "customer",
-        direction    = "incoming",
-        subject      = state.get("subject") or subject,
-        body         = incoming_body,
-        received_at  = datetime.utcnow()
-    )
-
-    try:
-        await push_message_log(
-            request_id      = request_id,
-            message         = customer_confirmation_log.model_dump(),
-            sent_message_id = incoming_msg_id,
-            status          = "ACCEPTED",
-        )
-    except Exception as e:
-        logger.error(
-            "[confirmation_node] DB push failed for incoming log request_id=%s: %s",
-            request_id, e, exc_info=True
-        )
-        raise RuntimeError(f"DB push failed for incoming log, request_id={request_id}") from e
-
     logger.info(
-        "[confirmation_node] Done | request_id=%s | status=ACCEPTED | "
-        "operator_msg=%s | customer_msg=%s | incoming_msg=%s",
-        request_id, operator_msg_id, customer_msg_id, incoming_msg_id
+        "[confirmation_node] Done | request_id=%s | status=CONFIRMED | "
+        "incoming_msg=%s | operator_msg=%s | customer_msg=%s",
+        request_id, incoming_msg_id, operator_msg_id, customer_msg_id
     )
 
-    # -- Step 8: Return updated state --------------------------
+    # Step 8: Return updated state
     existing_message_ids = list(state.get("message_ids", []))
-    existing_messages    = list(state.get("messages", []))
+    existing_messages = list(state.get("messages", []))
 
     return {
-        "status":          "ACCEPTED",
+        "status":          "CONFIRMED",
         "request_id":      request_id,
         "last_message_id": operator_msg_id,
-        "message_ids":     existing_message_ids + [operator_msg_id, customer_msg_id, incoming_msg_id],
-        "messages":        existing_messages + [operator_message_log, customer_message_log, customer_confirmation_log],
+        "message_ids":     existing_message_ids + [incoming_msg_id, operator_msg_id, customer_msg_id],
+        "messages":        existing_messages + [customer_confirmation_log, operator_message_log, customer_message_log],
     }

@@ -18,7 +18,12 @@ class EmailIntent(str, Enum):
 
 STATUSES = [
     "NEW",
-    
+    "MISSING_INFO",
+    "PRICING_PENDING",
+    "QUOTED",
+    "CONFIRMED",
+    "CLOSED",
+    "CANCELLED",
 ]
 
 

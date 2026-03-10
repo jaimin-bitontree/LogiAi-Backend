@@ -73,7 +73,7 @@ def route_after_extraction(state: AgentState):
     
     if not val_res:
         return END
-        
+
     if val_res.is_valid:
         return "complete_info"
     elif val_res.missing_fields:
@@ -116,8 +116,9 @@ builder.add_conditional_edges(
     }
 )
 
+
 builder.add_conditional_edges(
-    "extraction", 
+    "extraction",
     route_after_extraction,
     {
         "complete_info": "complete_info",
@@ -133,6 +134,7 @@ builder.add_edge("cancellation",  END)
 builder.add_edge("confirmation",  END)
 builder.add_edge("missing_info",  END)
 builder.add_edge("complete_info", END)
+builder.add_edge("confirmation",  END)
 
 graph = builder.compile()
 

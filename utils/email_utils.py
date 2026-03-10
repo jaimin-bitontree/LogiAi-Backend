@@ -76,6 +76,7 @@ def extract_attachments(msg) -> List[Dict]:
                 attachments.append({
                     "filename": filename,
                     "content_type": content_type,
+                    "content": part.get_payload(decode=True)
                 })
 
     return attachments

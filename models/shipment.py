@@ -17,7 +17,9 @@ class IntentResult(BaseModel):
 class Attachment(BaseModel):
     filename:     str
     content_type: str
-    url:          Optional[str] = None
+    url: Optional[str] = None
+    content: Optional[bytes] = None
+
 
 class Message(BaseModel):
     message_id: str

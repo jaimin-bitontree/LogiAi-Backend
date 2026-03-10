@@ -55,7 +55,8 @@ Rules:
 2. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
 3. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
 4. quantity must be integer
-5. weights and dimensions must be float
+5. cargo_weight, volume, length, height, width must be float
+   temperature is a string (e.g. "Ambient", "Frozen", "-18°C")
 6. stackable / dangerous must be boolean
 7. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
 8. Unknown or missing fields → null
@@ -78,7 +79,7 @@ def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
         Validated ExtractionSchema object
     """
     subject = (email_subject or "").strip()
-    body    = (email_body    or "").strip()
+    body = (email_body    or "").strip()
 
     if not subject and not body:
         raise ValueError("Email subject and body are empty.")
@@ -101,7 +102,7 @@ def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
 
         raw_text = response.choices[0].message.content.strip()
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-        parsed   = json.loads(raw_text)
+        parsed = json.loads(raw_text)
 
         return ExtractionSchema(**parsed)
 
@@ -172,7 +173,8 @@ Rules:
 2. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
 3. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
 4. quantity must be integer
-5. weights and dimensions must be float
+5. cargo_weight, volume, length, height, width must be float
+   temperature is a string (e.g. "Ambient", "Frozen", "-18°C")
 6. stackable / dangerous must be boolean
 7. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
 8. If a field is not mentioned → null

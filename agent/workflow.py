@@ -13,6 +13,8 @@ from agent.nodes.cancellation_node import cancellation_handler
 from agent.nodes.pricing_node import pricing_node
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
 
+from agent.nodes.pricing_node import pricing_node
+
 builder = StateGraph(AgentState)
 
 # ── Nodes ─────────────────────────────────────────────────────
@@ -64,6 +66,10 @@ def route_after_reqid(state: AgentState):
 
 def route_after_extraction(state: AgentState):
     """Route based on whether all required fields were found."""
+    # Route to pricing node if is_operator is True
+    if state.get("is_operator"):
+        return "pricing"
+        
     val_res = state.get("validation_result")
     status = state.get("status")
 

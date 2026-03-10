@@ -38,21 +38,29 @@ async def confirmation_node(state: AgentState) -> dict:
         return {}
 
     # Step 2: Fetch shipment from DB
+
     db = get_db()
-    shipment = await db.shipments.find_one({"last_message_id": conversation_id})
+    try:
+        shipment = await db.shipments.find_one({"last_message_id": conversation_id})
+    except Exception as e:
+        logger.error(
+            "[confirmation_node] DB lookup failed for last_message_id=%s: %s",
+            conversation_id, e, exc_info=True
+        )
+        raise RuntimeError(f"DB lookup failed for last_message_id={conversation_id}") from e
 
     if not shipment:
         logger.warning(
             "[confirmation_node] No shipment found for last_message_id=%s -- skipping.",
             conversation_id
         )
-        return {}
+    return {}
 
-    request_id = shipment.get("request_id", "")
+    request_id     = shipment.get("request_id", "")
     current_status = shipment.get("status", "")
-    request_data = shipment.get("request_data", {})
+    request_data   = shipment.get("request_data", {})
     customer_email = shipment.get("customer_email", "")
-    subject = shipment.get("subject") or "Your Shipment"
+    subject        = shipment.get("subject") or "Your Shipment"
 
     logger.info(
         "[confirmation_node] Found shipment | request_id=%s | status=%s",

@@ -8,61 +8,41 @@ from agent.nodes.missing_info_node import missing_info_node
 from agent.nodes.complete_info_node import complete_info_node
 from agent.nodes.reqid_generator_node import generate_reqid
 from agent.nodes.confirmation_node import confirmation_node
-from agent.nodes.status_node import status_handler
-from agent.nodes.cancellation_node import cancellation_handler
-from agent.nodes.pricing_node import pricing_node
-from models.shipment import LanguageMetadata, ValidationResult, Attachment
-
-from agent.nodes.pricing_node import pricing_node
 
 builder = StateGraph(AgentState)
 
-# ── Nodes ─────────────────────────────────────────────────────
-builder.add_node("parser",        parser_node)
-builder.add_node("language",      language_node)
-builder.add_node("intent",        intent_node)
-builder.add_node("reqid",         generate_reqid)
-builder.add_node("extraction",    extraction_node)
-builder.add_node("missing_info",  missing_info_node)
+builder.add_node("parser",       parser_node)
+builder.add_node("language",     language_node)
+builder.add_node("intent",       intent_node)
+builder.add_node("reqid",        generate_reqid)
+builder.add_node("extraction",   extraction_node)
+builder.add_node("missing_info", missing_info_node)
 builder.add_node("complete_info", complete_info_node)
-builder.add_node("confirmation",  confirmation_node)
-builder.add_node("status",        status_handler)
-builder.add_node("cancellation",  cancellation_handler)
-builder.add_node("pricing",       pricing_node)
+builder.add_node("confirmation", confirmation_node)
 
-# ── Routers ────────────────────────────────────────────────────
-def route_after_parser(state: AgentState):
-    """Route after parse_node - all emails go to language node."""
-    if state.get("is_operator") and state.get("shipment_found"):
-        return "language"  # Operator email with valid request_id → language
-    elif state.get("is_operator"):
-        return "error"  # Operator email but no request_id found → error
-    return "language"  # Customer email → language first
+builder.add_edge(START,      "parser")
+builder.add_edge("parser",   "language")
+builder.add_edge("language", "intent")
+
 
 def route_after_intent(state: AgentState):
-    """Route after intent_node based on intent and sender type."""
     intent = state.get("intent")
-    is_operator = state.get("is_operator", False)
-    
-    # If operator email with pricing intent, go to pricing node
-    if is_operator and intent == "operator_pricing":
-        return "pricing"
-    
-    # Route based on customer intent
-    if intent == "status_inquiry":
-        return "status"
-    elif intent == "cancellation":
-        return "cancellation"
-    elif intent == "confirmation":
+    if intent == "confirmation":
         return "confirmation"
-    elif intent in ["new_request", "missing_information"]:
-        return "reqid"
-    else:
-        return END
+    return "reqid"
 
-def route_after_reqid(state: AgentState):
-    """Route after reqid_generator_node for customer emails."""
-    return "extraction"
+
+builder.add_conditional_edges(
+    "intent",
+    route_after_intent,
+    {
+        "reqid":        "reqid",
+        "confirmation": "confirmation",
+    }
+)
+
+builder.add_edge("reqid", "extraction")
+
 
 def route_after_extraction(state: AgentState):
     """Route based on whether all required fields were found."""
@@ -77,11 +57,11 @@ def route_after_extraction(state: AgentState):
     if status == "ERROR":
         print("⚠️ [workflow] Routing to END because extraction_node reported status='ERROR'")
         return END
-    
+
     # If the email didn't trigger extraction, val_res remains default (is_valid=False, missing_fields=[])
     if not val_res:
         return END
-        
+
     if val_res.is_valid:
         return "complete_info"
     elif val_res.missing_fields:
@@ -90,43 +70,9 @@ def route_after_extraction(state: AgentState):
         # no missing fields, but not valid -> extraction was skipped
         return END
 
-# ── Edges ─────────────────────────────────────────────────────
-builder.add_edge(START, "parser")
 
 builder.add_conditional_edges(
-    "parser",
-    route_after_parser,
-    {
-        "language": "language",
-        "error": END
-    }
-)
-
-builder.add_edge("language", "intent")
-
-builder.add_conditional_edges(
-    "intent",
-    route_after_intent,
-    {
-        "pricing": "pricing",
-        "status": "status",
-        "cancellation": "cancellation",
-        "confirmation": "confirmation",
-        "reqid": "reqid",
-        END: END
-    }
-)
-
-builder.add_conditional_edges(
-    "reqid",
-    route_after_reqid,
-    {
-        "extraction": "extraction"
-    }
-)
-
-builder.add_conditional_edges(
-    "extraction", 
+    "extraction",
     route_after_extraction,
     {
         "complete_info": "complete_info",
@@ -138,9 +84,6 @@ builder.add_conditional_edges(
 # Terminal Edges
 builder.add_edge("missing_info",  END)
 builder.add_edge("complete_info", END)
-builder.add_edge("pricing",       END)
-builder.add_edge("status",        END)
-builder.add_edge("cancellation",  END)
 builder.add_edge("confirmation",  END)
 
 graph = builder.compile()
@@ -155,12 +98,12 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "last_message_id": None,  # Current head (always updated)
         "customer_email":   "",
         "subject":          None,
-        "message_ids":      [],         
+        "message_ids":      [],      
         "body":             "",
         "translated_body":  "",
         "translated_subject":  "",
-        "status":           "NEW",  
-        "intent":           None,   
+        "status":           "NEW",
+        "intent":           None,
         "attachments":      [],
         "language_metadata":  LanguageMetadata(),
         "request_data":       {},

@@ -126,49 +126,81 @@ def _section_missing_fields(missing_fields: List[str]) -> str:
     """
 
 
-def _section_pricing(pricing_details: List[dict]) -> str:
+def _section_pricing(pricing: PricingSchema) -> str:
     """
-    Only shown in  pricing  emails — rendered at top before extracted data.
-    Shows a pricing breakdown table.
-    Fix #7 — html.escape() on all values.
+    Shows a comprehensive pricing breakdown.
     """
-    if not pricing_details:
+    if not pricing:
         return ""
 
-    rows = "".join(
-        f"""<tr>
-              <td style="padding:8px 14px;border-bottom:1px solid #eee;
-                         color:#555;font-weight:600;">
-                {escape(str(p.get('transport_mode', 'N/A')))}
-              </td>
-              <td style="padding:8px 14px;border-bottom:1px solid #eee;color:#333;">
-                {escape(str(p.get('amount', 'N/A')))} {escape(str(p.get('currency', '')))}
-              </td>
-              <td style="padding:8px 14px;border-bottom:1px solid #eee;color:#777;
-                         font-size:13px;">
-                {escape(str(p.get('notes', '—')))}
-              </td>
-            </tr>"""
-        for p in pricing_details
-    )
+    def _render_charge_table(title: str, charges: List) -> str:
+        if not charges: return ""
+        rows = "".join(
+            f"""<tr>
+                  <td style="padding:8px;border-bottom:1px solid #eee;color:#555;">{escape(c.description)}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;color:#333;text-align:right;">
+                    {escape(c.amount)} {escape(c.currency)}
+                    {f" ({escape(c.rate)}/{escape(c.basis)})" if c.rate and c.basis else ""}
+                  </td>
+                </tr>"""
+            for c in charges
+        )
+        return f"""
+        <div style="margin-top:20px;">
+            <h4 style="color:#2c3e50;margin-bottom:8px;font-size:14px;border-bottom:1px solid #ddd;padding-bottom:4px;">{title}</h4>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">{rows}</table>
+        </div>
+        """
+
+    # Shipment details table (POL, POD, etc.)
+    details = pricing.shipment_details
+    details_html = ""
+    if details:
+        items = []
+        if details.pol: items.append(f"<b>POL:</b> {escape(details.pol)}")
+        if details.pod: items.append(f"<b>POD:</b> {escape(details.pod)}")
+        if details.cargo_type: items.append(f"<b>Cargo:</b> {escape(details.cargo_type)}")
+        if details.container_type: items.append(f"<b>Container:</b> {escape(details.container_type)}")
+        
+        if items:
+            details_html = f"""
+            <div style="background:#f0f4f8;padding:12px;border-radius:4px;font-size:13px;color:#2c3e50;margin-bottom:20px;">
+                {" | ".join(items)}
+            </div>
+            """
+
+    # Charge Tables
+    main_freight = _render_charge_table("Main Freight Charges", pricing.main_freight_charges)
+    origin       = _render_charge_table("Origin Charges",       pricing.origin_charges)
+    dest         = _render_charge_table("Destination Charges",  pricing.destination_charges)
+    additional   = _render_charge_table("Additional Charges",   pricing.additional_charges)
+
+    # Payment Terms
+    terms_html = ""
+    if pricing.payment_terms and pricing.payment_terms.validity:
+        terms_html = f"""
+        <div style="margin-top:24px;padding:12px;background:#fff8e1;border-radius:4px;font-size:13px;border:1px solid #ffe082;">
+            <b>Validity:</b> {escape(pricing.payment_terms.validity)}<br/>
+            <b>Conditions:</b> {escape(pricing.payment_terms.conditions or "N/A")}
+        </div>
+        """
+
+    notes_html = f'<p style="font-size:13px;color:#777;margin-top:16px;"><i>Note: {escape(pricing.calculation_notes)}</i></p>' if pricing.calculation_notes else ""
 
     return f"""
-    <h3 style="color:#2980b9;margin-top:24px;">💰 Your Quotation</h3>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;
-                  border:1px solid #eee;">
-      <thead>
-        <tr style="background:#f0f4f8;">
-          <th style="padding:8px 14px;text-align:left;color:#333;">Transport Mode</th>
-          <th style="padding:8px 14px;text-align:left;color:#333;">Amount</th>
-          <th style="padding:8px 14px;text-align:left;color:#333;">Notes</th>
-        </tr>
-      </thead>
-      <tbody>{rows}</tbody>
-    </table>
-    <p style="color:#555;">
-      To confirm this quote, please reply with <strong>"CONFIRM"</strong>
-      or contact your LogiAI operator directly.
-    </p>
+    <div style="margin-top:24px;">
+        <h3 style="color:#2980b9;margin-bottom:16px;border-left:4px solid #2980b9;padding-left:12px;">💰 Quotation Details</h3>
+        {details_html}
+        {main_freight}
+        {origin}
+        {dest}
+        {additional}
+        {terms_html}
+        {notes_html}
+    </div>
+    <div style="margin-top:24px;text-align:center;">
+       <p style="color:#555;">To confirm this quote, please reply with <strong>"CONFIRM"</strong></p>
+    </div>
     """
 
 
@@ -217,6 +249,8 @@ def _section_status(status: str, message: Optional[str]) -> str:
 # PUBLIC API
 # ─────────────────────────────────────────────────────────────
 
+from models.shipment import PricingSchema
+
 def build_email(
     email_type:    Literal["missing_info", "pricing", "status"],
     customer_name: str,
@@ -229,8 +263,8 @@ def build_email(
     # missing_info only
     missing_fields: Optional[List[str]] = None,
 
-    # pricing only
-    pricing_details: Optional[List[dict]] = None,
+    # pricing only (Uses PricingSchema object)
+    pricing: Optional[PricingSchema] = None,
 
     # status only
     status:  Optional[str] = None,
@@ -256,7 +290,7 @@ def build_email(
         body = data_section + _section_missing_fields(missing_fields or [])
 
     elif email_type == "pricing":
-        body = _section_pricing(pricing_details or []) + data_section
+        body = _section_pricing(pricing) + data_section
 
     elif email_type == "status":
         body = _section_status(status or "", message) + data_section
@@ -270,13 +304,16 @@ def build_email(
 
     # Operator specific instruction block
     operator_instruction = ""
-    if email_type == "pricing" and not pricing_details:
+    if email_type == "pricing" and not pricing:
         operator_instruction = f"""
         <div style="background:#fff3cd;padding:16px;border-left:4px solid #ffecb5;margin-bottom:20px;border-radius:4px;">
             <h4 style="color:#856404;margin-top:0;margin-bottom:8px;">🔔 Action Required</h4>
             <p style="color:#856404;margin:0;font-size:14px;">
                 Please review the extracted shipment details below and reply to this email with the pricing quotation. 
                 Format your reply clearly so the AI can extract the pricing information.
+            </p>
+            <p style="color:#856404;margin:8px 0 0 0;font-size:13px;font-weight:600;">
+                Request ID: {safe_id}
             </p>
         </div>
         """

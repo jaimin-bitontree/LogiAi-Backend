@@ -9,6 +9,8 @@ from agent.nodes.missing_info_node import missing_info_node
 from agent.nodes.complete_info_node import complete_info_node
 from agent.nodes.reqid_generator_node import generate_reqid
 
+from agent.nodes.pricing_node import pricing_node
+
 builder = StateGraph(AgentState)
 
 builder.add_node("parser",   parser_node)
@@ -18,15 +20,67 @@ builder.add_node("reqid",    generate_reqid)
 builder.add_node("extraction", extraction_node)
 builder.add_node("missing_info", missing_info_node)
 builder.add_node("complete_info", complete_info_node)
+builder.add_node("pricing", pricing_node)
 
-builder.add_edge(START,      "parser")
-builder.add_edge("parser",   "language")
+def route_after_parser(state: AgentState):
+    """Route after parse_node - all emails go to language node."""
+    if state.get("is_operator") and state.get("shipment_found"):
+        return "language"  # Operator email with valid request_id → language
+    elif state.get("is_operator"):
+        return "error"  # Operator email but no request_id found → error
+    return "language"  # Customer email → language first
+
+builder.add_edge(START, "parser")
+builder.add_conditional_edges(
+    "parser",
+    route_after_parser,
+    {
+        "language": "language",
+        "error": END  # End workflow with error
+    }
+)
+
 builder.add_edge("language", "intent")
-builder.add_edge("intent",   "reqid")
-builder.add_edge("reqid",    "extraction")
+
+def route_after_intent(state: AgentState):
+    """Route after intent_node based on intent and sender type."""
+    intent = state.get("intent")
+    is_operator = state.get("is_operator", False)
+    
+    # If operator email with pricing intent, go to pricing node
+    if is_operator and intent == "operator_pricing":
+        return "pricing"
+    
+    # Customer emails go to reqid generator
+    return "reqid"
+
+builder.add_conditional_edges(
+    "intent",
+    route_after_intent,
+    {
+        "pricing": "pricing",
+        "reqid": "reqid"
+    }
+)
+
+def route_after_reqid(state: AgentState):
+    """Route after reqid_generator_node for customer emails."""
+    return "extraction"
+
+builder.add_conditional_edges(
+    "reqid",
+    route_after_reqid,
+    {
+        "extraction": "extraction"
+    }
+)
 
 def route_after_extraction(state: AgentState):
     """Route based on whether all required fields were found."""
+    # Route to pricing node if is_operator is True
+    if state.get("is_operator"):
+        return "pricing"
+        
     val_res = state.get("validation_result")
     status = state.get("status")
 
@@ -59,6 +113,7 @@ builder.add_conditional_edges(
 
 builder.add_edge("missing_info",  END)
 builder.add_edge("complete_info", END)
+builder.add_edge("pricing",       END)
 
 graph = builder.compile()
 
@@ -67,9 +122,9 @@ def create_initial_state(raw_email: bytes) -> AgentState:
     return {
         "raw_email": raw_email,
         "request_id":       "",
-        "thread_id":        None,
+        "thread_id":        None,  # Conversation root (set once)
         "conversation_id":  None,
-        "last_message_id":  None,
+        "last_message_id": None,  # Current head (always updated)
         "customer_email":   "",
         "subject":          None,
         "message_ids":      [],         
@@ -84,6 +139,7 @@ def create_initial_state(raw_email: bytes) -> AgentState:
         "validation_result":  ValidationResult(),
         "pricing_details":    [],
         "messages":           [],
+        "is_operator":        False,
         "final_document":     None,
     }
 
@@ -100,8 +156,17 @@ async def run_workflow(raw_email: bytes) -> AgentState:
         async for step in graph.astream(initial_state):
             node_name = list(step.keys())[0]
             node_state = step[node_name]
+            
+            # Print node completion without raw_email
             print(f"\n✅ After node: [{node_name}]")
-            print(node_state)
+            
+            # Print only relevant fields (exclude raw_email to avoid clutter)
+            debug_state = {k: v for k, v in node_state.items() if k != 'raw_email'}
+            print(f"  request_id: {debug_state.get('request_id', '')}")
+            print(f"  status: {debug_state.get('status', '')}")
+            print(f"  is_operator: {debug_state.get('is_operator', False)}")
+            print(f"  shipment_found: {debug_state.get('shipment_found', False)}")
+            
             final_state = node_state
 
         return final_state

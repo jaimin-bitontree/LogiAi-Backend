@@ -5,6 +5,7 @@ from enum import Enum
 # ===============================
 
 class EmailIntent(str, Enum):
+    OPERATOR_PRICING = "operator_pricing"
     NEW_REQUEST = "new_request"
     STATUS_INQUIRY = "status_inquiry"
     CONFIRMATION = "confirmation"

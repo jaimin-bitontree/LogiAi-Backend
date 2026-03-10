@@ -38,7 +38,6 @@ async def confirmation_node(state: AgentState) -> dict:
         return {}
 
     # Step 2: Fetch shipment from DB
-<<<<<<< HEAD
 
     db = get_db()
     try:
@@ -49,17 +48,12 @@ async def confirmation_node(state: AgentState) -> dict:
             conversation_id, e, exc_info=True
         )
         raise RuntimeError(f"DB lookup failed for last_message_id={conversation_id}") from e
-=======
-    db = get_db()
-    shipment = await db.shipments.find_one({"last_message_id": conversation_id})
->>>>>>> 9525592cdbea64a9748a0c99415747c090890147
 
     if not shipment:
         logger.warning(
             "[confirmation_node] No shipment found for last_message_id=%s -- skipping.",
             conversation_id
         )
-<<<<<<< HEAD
     return {}
 
     request_id     = shipment.get("request_id", "")
@@ -67,15 +61,6 @@ async def confirmation_node(state: AgentState) -> dict:
     request_data   = shipment.get("request_data", {})
     customer_email = shipment.get("customer_email", "")
     subject        = shipment.get("subject") or "Your Shipment"
-=======
-        return {}
-
-    request_id = shipment.get("request_id", "")
-    current_status = shipment.get("status", "")
-    request_data = shipment.get("request_data", {})
-    customer_email = shipment.get("customer_email", "")
-    subject = shipment.get("subject") or "Your Shipment"
->>>>>>> 9525592cdbea64a9748a0c99415747c090890147
 
     logger.info(
         "[confirmation_node] Found shipment | request_id=%s | status=%s",

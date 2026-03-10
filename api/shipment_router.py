@@ -1,57 +1,43 @@
-from fastapi import APIRouter, HTTPException
-from models.shipment import Shipment, Message
-from services.shipment_service import create_shipment, find_by_thread_id
-from schemas.shipment_schema import (
-    StoreStateRequest,
-    StoreStateResponse,
-    ShipmentStateResponse,
-)
+from fastapi import APIRouter, HTTPException, Query
+from services.shipment_service import find_by_request_id, find_by_thread_id, list_shipments
+from models.shipment import Shipment
+from typing import List, Optional
 
-router = APIRouter(prefix="/shipments", tags=["Shipments"])
+router = APIRouter(prefix="/shipments", tags=["shipments"])
 
+@router.get("/", response_model=List[Shipment])
+async def get_all_shipments(
+    status: Optional[str] = Query(None, description="Filter by shipment status"),
+    page: int = Query(1, ge=1, description="Page number (starting from 1)"),
+    page_size: int = Query(10, ge=1, le=10, description="Items per page (max 10)")
+):
+    """
+    Get a paginated list of shipments.
+    You can filter by 'status' and control results per page.
+    """
+    return await list_shipments(
+        status=status, 
+        page=page, 
+        page_size=page_size
+    )
 
-@router.get("/by-thread/{thread_id}", response_model=ShipmentStateResponse)
-async def get_by_thread_id(thread_id: str):
-    """Fetch an existing shipment by thread_id. Called by the reqid node to hydrate state."""
+@router.get("/{request_id}", response_model=Shipment)
+async def get_shipment_by_id(request_id: str):
+    """
+    Retrieve shipment details by its LogiAI Request ID.
+    Example: LOGI-123456
+    """
+    shipment = await find_by_request_id(request_id)
+    if not shipment:
+        raise HTTPException(status_code=404, detail=f"Shipment with ID {request_id} not found")
+    return shipment
+
+@router.get("/thread/{thread_id}", response_model=Shipment)
+async def get_shipment_by_thread_id(thread_id: str):
+    """
+    Retrieve shipment details by its Gmail Thread ID.
+    """
     shipment = await find_by_thread_id(thread_id)
     if not shipment:
-        raise HTTPException(status_code=404, detail="Shipment not found")
-    return ShipmentStateResponse(
-        request_id=shipment.request_id,
-        thread_id=shipment.thread_id,
-        last_message_id=shipment.last_message_id,
-        status=shipment.status,
-        intent=shipment.intent,
-        message_ids=shipment.message_ids,
-        attachments=shipment.attachments,
-    )
-
-
-@router.post("/store", response_model=StoreStateResponse, status_code=201)
-async def store_state(payload: StoreStateRequest):
-    """Receive agent state after reqid node and persist it as a Shipment in DB."""
-    message = Message(
-        message_id=payload.message_ids[0] if payload.message_ids else "",
-        sender_email=payload.customer_email,
-        sender_type="customer",
-        direction="incoming",
-        subject=payload.subject,
-        body=payload.body,
-        attachments=payload.attachments or [],
-    )
-    shipment = Shipment(
-        request_id=payload.request_id,
-        thread_id=payload.thread_id,
-        customer_email=payload.customer_email,
-        subject=payload.subject,
-        body=payload.body,
-        attachments=payload.attachments or [],
-        messages=[message],
-        message_ids=payload.message_ids or [],
-        last_message_id=payload.last_message_id,
-        translated_body=payload.translated_body,
-        translated_subject=payload.translated_subject,
-        language_metadata=payload.language_metadata,
-    )
-    await create_shipment(shipment)
-    return StoreStateResponse(request_id=payload.request_id, status="NEW")
+        raise HTTPException(status_code=404, detail=f"Shipment with Thread ID {thread_id} not found")
+    return shipment

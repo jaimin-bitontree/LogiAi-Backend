@@ -8,18 +8,20 @@ from config import settings
 
 def generate_message_id(request_id: str = "") -> str:
     """
-    Generate a readable unique Message-ID.
-    Format: <LOGIAI-{request_id}-{timestamp}@logiai.com>
-    Example: <LOGIAI-REQ001-1741244400@logiai.com>
+    Generate a readable unique Message-ID WITHOUT angle brackets.
+    Format: LOGIAI-{request_id}-{timestamp}@logiai.com
+    Example: LOGIAI-REQ001-1741244400@logiai.com
+    
+    Note: Angle brackets are added by the email library when sending.
     """
     timestamp = int(time.time())
     prefix    = f"LOGIAI-{request_id}-" if request_id else "LOGIAI-"
-    return f"<{prefix}{timestamp}@logiai.com>"
+    return f"{prefix}{timestamp}@logiai.com"
 
 
 def send_email(to: str, subject: str, body_html: str, request_id: str = "") -> str:
     """
-    Send an HTML email via Gmail SMTP.
+    Send an HTML email via Gmail SMTP with plain text alternative.
 
     Args:
         to:         Recipient email address.
@@ -28,7 +30,7 @@ def send_email(to: str, subject: str, body_html: str, request_id: str = "") -> s
         request_id: Optional shipment ID to embed in the Message-ID.
 
     Returns:
-        The Message-ID of the sent email (used for tracking/threading).
+        The Message-ID of the sent email WITHOUT angle brackets (used for tracking/threading).
 
     Raises:
         RuntimeError: If the email fails to send.
@@ -39,7 +41,23 @@ def send_email(to: str, subject: str, body_html: str, request_id: str = "") -> s
     msg["From"]       = settings.GMAIL_ADDRESS
     msg["To"]         = to
     msg["Subject"]    = subject
-    msg["Message-ID"] = message_id
+    msg["Message-ID"] = f"<{message_id}>"  # Add angle brackets for email header
+
+    # Add plain text version with request_id for operator emails
+    if request_id:
+        plain_text = f"""
+LogiAI — Shipment Management
+
+Request ID: {request_id}
+
+{subject}
+
+Please reply to this email with your response.
+For operator emails: Include pricing details in your reply.
+
+This is an automated message from LogiAI.
+        """.strip()
+        msg.attach(MIMEText(plain_text, "plain"))
 
     msg.attach(MIMEText(body_html, "html"))
 
@@ -52,7 +70,7 @@ def send_email(to: str, subject: str, body_html: str, request_id: str = "") -> s
             server.sendmail(settings.GMAIL_ADDRESS, to, msg.as_string())
 
         print(f"✅ Email sent to {to} | Message-ID: {message_id}")
-        return message_id
+        return message_id  # Return WITHOUT angle brackets
 
     except smtplib.SMTPException as e:
         print(f"❌ SMTP error while sending email to {to}: {e}")

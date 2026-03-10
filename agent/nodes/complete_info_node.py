@@ -133,7 +133,7 @@ async def complete_info_node(state: AgentState) -> dict:
         request_id    = request_id,
         request_data  = request_data,
         all_fields    = all_fields,
-        pricing_details = [],              # empty — operator needs to fill price
+        pricing       = None,              # empty — operator needs to fill price
     )
     operator_subject = f"New Shipment Request — {request_id}"
 

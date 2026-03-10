@@ -25,7 +25,7 @@ async def status_handler(state: AgentState) -> AgentState:
     status_result = await get_shipment_status_context(
         customer_email=customer_email,
         request_id=request_id,
-        last_message_id=conversation_id  # Use conversation_id as last_message_id
+        last_message_id=last_message_id  # Use last_message_id variable
     )
 
     if not status_result["found"]:
@@ -51,7 +51,7 @@ async def status_handler(state: AgentState) -> AgentState:
 
         outgoing_msg = Message(
             message_id=outgoing_message_id,
-            sender_email=settings.SYSTEM_EMAIL,
+            sender_email=settings.GMAIL_ADDRESS,
             sender_type="system",
             direction="outgoing",
             subject=subject,
@@ -94,7 +94,7 @@ async def status_handler(state: AgentState) -> AgentState:
     # Prepare outgoing message object
     outgoing_msg = Message(
         message_id=outgoing_message_id,
-        sender_email=settings.SYSTEM_EMAIL,
+        sender_email=settings.GMAIL_ADDRESS,
         sender_type="system",
         direction="outgoing",
         subject=subject,
@@ -116,7 +116,7 @@ async def status_handler(state: AgentState) -> AgentState:
     # Persist to DB
     await update_shipment_thread_id(
         request_id=shipment.request_id,
-        new_thread_id=outgoing_message_id,
+        new_message_id=outgoing_message_id,
         new_message=outgoing_msg.model_dump()
     )
 

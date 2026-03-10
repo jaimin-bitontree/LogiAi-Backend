@@ -43,7 +43,7 @@ Required fields:
 Optional fields:
 {json.dumps(OPTIONAL_FIELDS, indent=2)}
 
-Allowed values:
+CRITICAL - Allowed values (use EXACT match, case-sensitive):
 incoterm       : {json.dumps(INCOTERMS)}
 package_type   : {json.dumps(PACKAGE_TYPES)}
 shipment_type  : {json.dumps(SHIPMENT_TYPES)}
@@ -52,14 +52,22 @@ container_type : {json.dumps(CONTAINER_TYPES)}
 
 Rules:
 1. Extract only values explicitly mentioned.
-2. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
-3. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
-4. quantity must be integer
-5. cargo_weight, volume, length, height, width must be float
-   temperature is a string (e.g. "Ambient", "Frozen", "-18°C")
-6. stackable / dangerous must be boolean
-7. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
-8. Unknown or missing fields → null
+2. For enum fields (incoterm, package_type, etc.), you MUST use EXACT values from the allowed lists above.
+   - "Bags" → use "Bag" (singular)
+   - "boxes" → use "Box" (capitalized)
+   - "40ft container" → use "40' GP"
+   - "wooden crates" → use "Box"
+3. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
+4. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
+5. quantity must be integer
+6. weights and dimensions must be float
+7. stackable / dangerous must be boolean
+8. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
+9. Unknown or missing fields → null
+10. If customer mentions a package type not in the list, map to closest match:
+    - crates/wooden crates → "Box"
+    - sacks → "Bag"
+    - parcels → "Package"
 
 Return ONLY JSON in this format:
 {_JSON_FORMAT}
@@ -161,7 +169,7 @@ Extract ONLY these fields from their reply:
 Missing fields to extract:
 {json.dumps(missing_fields, indent=2)}
 
-Allowed values:
+CRITICAL - Allowed values (use EXACT match, case-sensitive):
 incoterm       : {json.dumps(INCOTERMS)}
 package_type   : {json.dumps(PACKAGE_TYPES)}
 shipment_type  : {json.dumps(SHIPMENT_TYPES)}
@@ -170,14 +178,22 @@ container_type : {json.dumps(CONTAINER_TYPES)}
 
 Rules:
 1. Extract only values explicitly mentioned.
-2. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
-3. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
-4. quantity must be integer
-5. cargo_weight, volume, length, height, width must be float
-   temperature is a string (e.g. "Ambient", "Frozen", "-18°C")
-6. stackable / dangerous must be boolean
-7. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
-8. If a field is not mentioned → null
+2. For enum fields (incoterm, package_type, etc.), you MUST use EXACT values from the allowed lists above.
+   - "Bags" → use "Bag" (singular)
+   - "boxes" → use "Box" (capitalized)
+   - "40ft container" → use "40' GP"
+   - "wooden crates" → use "Box"
+3. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
+4. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
+5. quantity must be integer
+6. weights and dimensions must be float
+7. stackable / dangerous must be boolean
+8. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
+9. If a field is not mentioned → null
+10. If customer mentions a package type not in the list, map to closest match:
+    - crates/wooden crates → "Box"
+    - sacks → "Bag"
+    - parcels → "Package"
 
 Return ONLY JSON with these fields:
 {missing_format}

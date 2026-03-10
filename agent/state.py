@@ -13,7 +13,7 @@ class AgentState(TypedDict):
     # ── Email / Identity ──────────────────────────────────
     raw_email: bytes
     request_id:        str
-    thread_id:         Optional[str]
+    thread_id:         Optional[str]  # Conversation root (FIRST message)
     conversation_id:   Optional[str]
     customer_email:    str
     subject:           Optional[str]
@@ -23,7 +23,9 @@ class AgentState(TypedDict):
     translated_subject: str
     status: str
     intent: Optional[str]
-    last_message_id: Optional[str]
+    last_message_id: Optional[str]  # Current head (LATEST message)
+    shipment_found: bool = False  # Flag for routing (set by parse_node)
+    is_operator: bool = False
 
     # ── Language ──────────────────────────────────────────
     language_metadata: LanguageMetadata

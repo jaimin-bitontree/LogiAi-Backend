@@ -20,12 +20,14 @@ Emails may be written as plain conversational paragraphs with no labels or struc
 
 Classify the given email into exactly ONE of these intents:
 
-1. new_request - Sender wants a new shipment AND provides BOTH a clear origin
+1. operator_pricing - Email contains pricing/quotation details from the logistics operator.
+                      Look for: prices, rates, costs, freight charges, quotations, USD/EUR amounts.
+2. new_request - Sender wants a new shipment AND provides BOTH a clear origin
                 AND a clear destination. Both must be present for new_request.
-2. status_inquiry - Sender is asking about the status of an existing shipment/order.
-3. confirmation - Sender is confirming a previously discussed shipment or booking.
-4. cancellation - Sender wants to cancel an existing shipment or order.
-5. missing_information - Email is missing origin OR destination OR both, even if other
+3. status_inquiry - Sender is asking about the status of an existing shipment/order.
+4. confirmation - Sender is confirming a previously discussed shipment or booking.
+5. cancellation - Sender wants to cancel an existing shipment or order.
+6. missing_information - Email is missing origin OR destination OR both, even if other
                          details like weight or volume are present. Also use this if the
                          email is too vague to process as a shipment request.
 
@@ -34,7 +36,7 @@ reference, or customer reference found anywhere in the email. If none, set null.
 
 Respond ONLY in this exact JSON format, no extra text, no markdown:
 {
-  "intent": "<new_request | status_inquiry | confirmation | cancellation | missing_information>",
+  "intent": "<operator_pricing | new_request | status_inquiry | confirmation | cancellation | missing_information>",
   "request_id": "<extracted ID or null>"
 }
 """.strip()

@@ -18,15 +18,14 @@ async def status_handler(state: AgentState) -> AgentState:
     """
     customer_email = state.get("customer_email")
     request_id     = state.get("request_id")
-    thread_id      = state.get("thread_id")
-    current_message_id = state.get("thread_id") # Consistent with other nodes
+    last_message_id = state.get("conversation_id")  # Get from state instead of thread_id
 
     print(f"\n[status_handler] Processing status inquiry for {customer_email}")
 
     status_result = await get_shipment_status_context(
         customer_email=customer_email,
         request_id=request_id,
-        thread_id=thread_id
+        last_message_id=conversation_id  # Use conversation_id as last_message_id
     )
 
     if not status_result["found"]:

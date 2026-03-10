@@ -10,7 +10,7 @@ from services.intent_service import detect_intent
 def intent_node(state: AgentState) -> dict:
     """
     Reads translated_subject and translated_body from state.
-    Returns only intent and request_id (if found).
+    Returns intent and optionally request_id (only if found in email).
     """
     result = detect_intent(
         state.get("translated_subject", ""),
@@ -19,10 +19,13 @@ def intent_node(state: AgentState) -> dict:
 
     _print_intent_result(state.get("translated_subject", ""), result)
 
-    return {
-        "intent": result.intent.value,
-        "request_id": result.request_id or "",
-    }
+    # Only update request_id if one was found in the email AND state doesn't have one yet
+    update = {"intent": result.intent.value}
+    
+    if result.request_id and not state.get("request_id"):
+        update["request_id"] = result.request_id
+
+    return update
 
 
 # ===================================================

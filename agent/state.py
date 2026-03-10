@@ -27,6 +27,7 @@ class AgentState(TypedDict):
     last_message_id: Optional[str]  # Current head (LATEST message)
     shipment_found: bool = False  # Flag for routing (set by parse_node)
     is_operator: bool = False
+    email_tool_executed: bool = False  # Flag to prevent duplicate email sending
 
     # ── Language ──────────────────────────────────────────
     language_metadata: LanguageMetadata

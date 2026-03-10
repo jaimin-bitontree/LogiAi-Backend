@@ -100,10 +100,10 @@ async def parser_node(state: AgentState) -> AgentState:
 
         if is_pdf and att.content:
             try:
-                print(f"[parse_node] Extracting PDF: {att.filename}")
+                logger.info(f"[parse_node] Extracting PDF: {att.filename}")
                 pdf_text = extract_text_from_pdf(att.content)
                 if not pdf_text:
-                    print(f"[parse_node] ⚠️ No text extracted from {att.filename} — may be scanned or image-based PDF")
+                    logger.warning(f"[parse_node] No text extracted from {att.filename} — may be scanned or image-based PDF")
                     updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a digital PDF]"
                 else:
                     updated_body = append_pdf_text_to_body.invoke({
@@ -111,17 +111,17 @@ async def parser_node(state: AgentState) -> AgentState:
                         "pdf_filename": att.filename,
                         "pdf_text": pdf_text,
                     })
-                    print(f"[parse_node] ✅ Extracted {len(pdf_text)} chars from {att.filename}")
+                    logger.info(f"[parse_node] Extracted {len(pdf_text)} chars from {att.filename}")
             except Exception as e:
-                print(f"[parse_node] ❌ PDF extraction failed: {att.filename} — {e}")
+                logger.error(f"[parse_node] PDF extraction failed: {att.filename} — {e}")
                 updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a digital PDF]"
 
         elif is_excel and att.content:
             try:
-                print(f"[parse_node] Extracting Excel: {att.filename}")
+                logger.info(f"[parse_node] Extracting Excel: {att.filename}")
                 excel_text = extract_text_from_excel(att.content)
                 if not excel_text:
-                    print(f"[parse_node] ⚠️ No text extracted from {att.filename} — file may be empty")
+                    logger.warning(f"[parse_node] No text extracted from {att.filename} — file may be empty")
                     updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a valid Excel file]"
                 else:
                     updated_body = append_excel_text_to_body.invoke({
@@ -129,9 +129,9 @@ async def parser_node(state: AgentState) -> AgentState:
                         "excel_filename": att.filename,
                         "excel_text": excel_text,
                     })
-                    print(f"[parse_node] ✅ Extracted {len(excel_text)} chars from {att.filename}")
+                    logger.info(f"[parse_node] Extracted {len(excel_text)} chars from {att.filename}")
             except Exception as e:
-                print(f"[parse_node] ❌ Excel extraction failed: {att.filename} — {e}")
+                logger.error(f"[parse_node] Excel extraction failed: {att.filename} — {e}")
                 updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a valid Excel file]"
 
     message_ids = state.get("message_ids")
@@ -171,7 +171,7 @@ async def parser_node(state: AgentState) -> AgentState:
                 state["request_data"] = shipment.request_data
                 state["status"] = shipment.status
                 state["pricing_details"] = shipment.pricing_details
-                state["messages"] = shipment.messages
+                # Note: Don't copy shipment.messages to state["messages"] - LangChain messages are handled separately
         
         # Strategy 2: Extract request_id from subject line (separate email)
         if not shipment_found:

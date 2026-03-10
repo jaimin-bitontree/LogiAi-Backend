@@ -105,6 +105,9 @@ def extract_pricing_data(email_body: str) -> tuple[Optional[PricingSchema], Opti
         raise ValueError("Empty email body provided for pricing extraction")
     
     try:
+        logger.debug(f"[pricing_service] extract_pricing_data called with {len(email_body)} chars")
+        logger.debug(f"[pricing_service] Using model: {settings.EXTRACTION_MODEL}")
+        
         response = client.chat.completions.create(
             model=settings.EXTRACTION_MODEL,
             messages=[
@@ -116,9 +119,16 @@ def extract_pricing_data(email_body: str) -> tuple[Optional[PricingSchema], Opti
         )
 
         content = response.choices[0].message.content
+        logger.debug(f"[pricing_service] LLM raw response: {content[:500]}...")
+        
         data = json.loads(content)
         request_id = data.pop("request_id", None)
+        
+        logger.debug(f"[pricing_service] Parsed data keys: {list(data.keys())}")
+        logger.debug(f"[pricing_service] Extracted request_id: {request_id}")
+        
         pricing_schema = PricingSchema(**data)
+        logger.debug(f"[pricing_service] PricingSchema created successfully")
         
         return pricing_schema, request_id
 

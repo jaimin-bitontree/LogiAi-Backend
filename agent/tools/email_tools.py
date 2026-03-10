@@ -148,21 +148,46 @@ async def send_complete_info_emails(
     )
 
     # ── Operator notification email ────────────────────────────
-    operator_html = build_email(
-        email_type      = "pricing",
-        customer_name   = "Operator",
-        request_id      = request_id,
-        request_data    = request_data,
-        all_fields      = all_fields,
-        pricing_details = [],
-    )
-    operator_subject = f"New Shipment Request — {request_id}"
-    operator_msg_id  = send_email(
-        to         = operator_email,
-        subject    = operator_subject,
-        body_html  = operator_html,
-        request_id = request_id,
-    )
+    logger.debug(f"OPERATOR_EMAIL from settings: '{operator_email}'")
+    logger.info(f"[email_tools] Sending operator notification to: {operator_email}")
+    
+    if not operator_email:
+        error_msg = "OPERATOR_EMAIL not configured in settings"
+        logger.error(f"[email_tools] {error_msg}")
+        logger.error(f"{error_msg}")
+        return f"✅ Customer email sent | customer_msg_id={customer_msg_id} | ❌ Operator email failed: {error_msg}"
+    
+    try:
+        logger.debug(f"Building operator email template...")
+        operator_html = build_email(
+            email_type      = "pricing",
+            customer_name   = "Operator",
+            request_id      = request_id,
+            request_data    = request_data,
+            all_fields      = all_fields,
+        )
+        operator_subject = f"New Shipment Request — {request_id}"
+        logger.debug(f"Operator email template built successfully")
+        
+        logger.debug(f"Attempting to send operator email to: {operator_email}")
+        logger.info(f"[email_tools] Attempting to send operator email...")
+        operator_msg_id = send_email(
+            to         = operator_email,
+            subject    = operator_subject,
+            body_html  = operator_html,
+            request_id = request_id,
+        )
+        logger.debug(f"Operator email sent successfully: {operator_msg_id}")
+        logger.info(f"[email_tools] Operator email sent successfully: {operator_msg_id}")
+    except Exception as e:
+        error_msg = f"Failed to send operator email: {e}"
+        logger.error(f"[email_tools] {error_msg}")
+        logger.error(f"[email_tools] Operator email details - to: {operator_email}, subject: {operator_subject}")
+        logger.error(f"{error_msg}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        logger.error(f"Exception details: {str(e)}")
+        # Continue with customer email only
+        return f"✅ Customer email sent | customer_msg_id={customer_msg_id} | ❌ Operator email failed: {e}"
 
     # ── Log both to DB ─────────────────────────────────────────
     customer_log = Message(

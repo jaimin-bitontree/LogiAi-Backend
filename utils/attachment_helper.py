@@ -1,4 +1,7 @@
-import fitz  # PyMuPDF
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    fitz = None
 import io
 import openpyxl
 
@@ -8,6 +11,9 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     Extracts all text from PDF bytes using PyMuPDF (fitz).
     Handles locked PDFs by returning a warning message.
     """
+    if fitz is None:
+        return "[ERROR: PyMuPDF not installed - cannot extract PDF text]"
+    
     text = ""
     try:
         with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:

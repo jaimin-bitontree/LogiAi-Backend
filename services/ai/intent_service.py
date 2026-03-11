@@ -50,14 +50,49 @@ Classify the given email into exactly ONE of these intents:
 5. cancellation - Sender wants to cancel an existing shipment or order.
                  Keywords: "cancel", "stop", "abort", "withdraw"
 
-6. missing_information - Use this ONLY if origin OR destination is missing from BOTH the email text
-                         AND the PDF content. Also use if there is no shipment-related content at all.
+6. missing_information - Email is missing origin OR destination OR both, even if other
+                         details like weight or volume are present. Also use this if the
+                         email is too vague to process as a shipment request.
+                         IMPORTANT: Only use this if email shows INTENT to ship but lacks details.
 
-7. spam - Email is clearly spam, phishing, marketing, or not related to logistics.
-          Look for: promotional content, phishing attempts, unrelated topics,
-          suspicious links, requests for personal info, "click here", "verify account"
-          Examples: "Congratulations you won!", "Verify your PayPal", "Buy cheap products"
-          CRITICAL: Only mark as spam if VERY CLEAR. When in doubt, use missing_information.
+7. spam - Email is clearly spam, phishing, marketing, irrelevant, or off-topic.
+          
+          SPAM INDICATORS (Malicious/Marketing):
+          - Phishing attempts: "verify account", "confirm password", "update payment"
+          - Marketing: "buy now", "limited offer", "click here", "special discount"
+          - Promotional: "congratulations you won", "claim prize", "free money"
+          - Suspicious links: "bit.ly", "tinyurl", shortened URLs
+          - Requests for personal info: "send credit card", "bank details", "SSN"
+          - Lottery/Prize scams: "you won", "congratulations", "claim reward"
+          
+          IRRELEVANT/OFF-TOPIC INDICATORS (Not malicious, just not logistics):
+          - Casual greetings ONLY: "hello how are you", "hi there", "what's up"
+          - Personal chat: "just checking in", "how's the weather", "nice to meet you"
+          - No shipment keywords at all: no mention of cargo, origin, destination, weight, etc.
+          - Very short emails (< 20 words) with no logistics content
+          - Completely unrelated topics: "can you help with my homework", "fix my computer"
+          - Social emails: "let's grab coffee", "see you soon", "happy birthday"
+          
+          CRITICAL RULES FOR SPAM CLASSIFICATION:
+          1. If email mentions ANY shipment-related keywords (origin, destination, weight, cargo, 
+             container, port, freight, shipping, delivery, quote, pricing) → NOT spam
+          2. If email is asking for shipment details (even vaguely) → NOT spam, use missing_information
+          3. Only mark as spam if VERY CLEAR it's either:
+             - Malicious/phishing/marketing, OR
+             - Completely off-topic with NO logistics intent whatsoever
+          4. When in doubt between spam and missing_information → use missing_information
+          
+          Examples of SPAM:
+          - "Congratulations you won $1,000,000!"
+          - "Hello how are you doing?" (no logistics context)
+          - "Verify your PayPal account"
+          - "Click here for free shipping" (marketing)
+          - "Just saying hi, how's life?" (pure social, no logistics)
+          
+          Examples of NOT SPAM (use missing_information instead):
+          - "I need to ship something but don't have details yet"
+          - "Can you help me with a shipment?" (vague but shows intent)
+          - "What's the process for shipping?" (asking about logistics)
 
 CRITICAL DISTINCTION - READ CAREFULLY:
 - If email is REQUESTING pricing/quotation (customer asking) → new_request

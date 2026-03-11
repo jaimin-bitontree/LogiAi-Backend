@@ -216,6 +216,30 @@ async def push_message_log(request_id: str, message: dict, sent_message_id: str,
         logger.info(f"Message log pushed | request_id: {request_id} | message_id: {sent_message_id}")
 
 
+async def push_pricing_details(request_id: str, pricing_data: dict) -> None:
+    """
+    Append pricing data to the pricing_details array for a shipment.
+    
+    Args:
+        request_id: The shipment's request_id to match.
+        pricing_data: Serialized PricingSchema dict to append.
+    """
+    db = get_db()
+    
+    result = await db["shipments"].update_one(
+        {"request_id": request_id},
+        {
+            "$push": {"pricing_details": pricing_data},
+            "$set": {"updated_at": datetime.utcnow()}
+        }
+    )
+    
+    if result.matched_count == 0:
+        logger.warning(f"No shipment found with request_id={request_id}")
+    else:
+        logger.info(f"Pricing details pushed | request_id: {request_id}")
+
+
 # ============================================================
 # FETCH FUNCTIONS
 # ============================================================

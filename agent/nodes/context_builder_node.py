@@ -11,6 +11,8 @@ by returning {"messages": [HumanMessage(...)]} from a graph node.
 
 from langchain_core.messages import HumanMessage
 from agent.state import AgentState
+import logging
+
 
 
 def context_builder_node(state: AgentState) -> dict:
@@ -20,13 +22,13 @@ def context_builder_node(state: AgentState) -> dict:
     Returns it as {"messages": [HumanMessage(...)]} so the add_messages
     reducer appends it to the state correctly.
     """
-    intent         = state.get("intent", "unknown")
+    intent = state.get("intent", "unknown")
     customer_email = state.get("customer_email", "")
-    subject        = state.get("subject", "")
-    body           = state.get("translated_body", "")
-    request_id     = state.get("request_id", "")
-    request_data   = state.get("request_data", {})
-    validation     = state.get("validation_result")
+    subject = state.get("subject", "")
+    body = state.get("translated_body", "")
+    request_id = state.get("request_id", "")
+    request_data = state.get("request_data", {})
+    validation = state.get("validation_result")
     
     if isinstance(validation, dict):
         missing_fields = validation.get("missing_fields", [])
@@ -42,7 +44,6 @@ def context_builder_node(state: AgentState) -> dict:
     else:
         body_snippet = body[:200] + ("..." if len(body) > 200 else "")
 
-    import logging
     logger = logging.getLogger(__name__)
     
     logger.info(f"[context_builder_node] Seeding agent with intent={intent} | request_id={request_id}")

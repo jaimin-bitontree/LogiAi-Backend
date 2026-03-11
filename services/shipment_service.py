@@ -2,7 +2,7 @@ from typing import List
 from datetime import datetime
 from db.client import get_db
 from models.shipment import Shipment
-
+from typing import Optional
 # Statuses that mean a shipment is still active / awaiting a reply
 OPEN_STATUSES = ["MISSING_INFO", "PRICING_PENDING", "QUOTED"]
 

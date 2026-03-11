@@ -15,8 +15,7 @@ from models.shipment import Message
 from services.ai.pricing_service import extract_pricing_data
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import push_message_log, get_shipment_by_request_id
-from db.client import get_db
+from services.shipment.shipment_service import push_message_log, get_shipment_by_request_id, push_pricing_details
 
 logger = logging.getLogger(__name__)
 
@@ -109,11 +108,10 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
             status="QUOTED"
         )
         
-        # Save pricing details
-        db = get_db()
-        await db.shipments.update_one(
-            {"request_id": request_id},
-            {"$push": {"pricing_details": pricing_data.model_dump()}}
+        # Save pricing details using service layer
+        await push_pricing_details(
+            request_id=request_id,
+            pricing_data=pricing_data.model_dump()
         )
 
         logger.info(f"[pricing_tools] Quote sent for {request_id} to {customer_email}")

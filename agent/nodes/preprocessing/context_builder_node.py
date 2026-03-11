@@ -37,6 +37,17 @@ def context_builder_node(state: AgentState) -> dict:
     else:
         missing_fields = []
 
+    # Extract customer_name from request_data if available
+    customer_name = ""
+    if isinstance(request_data, dict):
+        required = request_data.get("required", {})
+        if isinstance(required, dict):
+            customer_name = required.get("customer_name", "")
+    
+    # Fallback to email if no customer_name found
+    if not customer_name:
+        customer_name = customer_email.split("@")[0] if customer_email else "Customer"
+
     # For operator_pricing intent, provide the FULL body since we need to extract pricing data
     # For other intents, provide only a snippet since tools fetch full data from DB
     if intent == "operator_pricing":
@@ -50,12 +61,16 @@ def context_builder_node(state: AgentState) -> dict:
     
     directive = "EXTRACT ALL FIELDS" if intent == "new_request" else f"EXTRACT MISSING FIELDS: {missing_fields}"
     
+    # Build seed message with all parameters needed for tool calls
     seed_message = f"""
 ### INCOMING SHIPMENT EMAIL ###
 REQUEST_ID: {request_id}
-CUSTOMER  : {customer_email}
-INTENT    : {intent}
-ACTION    : {directive}
+CUSTOMER_EMAIL: {customer_email}
+CUSTOMER_NAME: {customer_name}
+SUBJECT: {subject}
+INTENT: {intent}
+ACTION: {directive}
+MISSING_FIELDS: {missing_fields}
 
 EMAIL SNIPPET (INTERNAL DB RECORD):
 ---
@@ -63,7 +78,13 @@ EMAIL SNIPPET (INTERNAL DB RECORD):
 ---
 
 INSTRUCTIONS: 
-Use the appropriate extraction tool for the '{intent}' intent now."""
+Use the appropriate extraction tool for the '{intent}' intent now.
+When calling email tools, use these parameters:
+- request_id: {request_id}
+- customer_email: {customer_email}
+- customer_name: {customer_name}
+- subject: {subject}
+- missing_fields: {missing_fields}"""
     
     msg = HumanMessage(content=seed_message.strip())
     logger.debug(f"[context_builder_node] SEED MESSAGE:\n{msg.content}\n")

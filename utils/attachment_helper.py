@@ -4,6 +4,10 @@ import re
 import openpyxl
 import easyocr
 import numpy as np
+import logging
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Initialize EasyOCR reader once — loads model on first run
 _reader = easyocr.Reader(["en"], gpu=False)
@@ -15,7 +19,12 @@ def _is_meaningful_text(text: str) -> bool:
     Returns False if text is garbage characters from image-based PDF.
     """
     real_words = re.findall(r'[a-zA-Z]{3,}', text)
-    return len(real_words) >= 5
+    is_meaningful = len(real_words) >= 5
+    
+    if not is_meaningful and text:
+        logger.debug(f"Text not meaningful: {len(real_words)} real words found in {len(text)} chars")
+    
+    return is_meaningful
 
 
 
@@ -90,14 +99,14 @@ def _extract_text_from_scanned_pdf(pdf_bytes: bytes) -> str:
 
                     if page_text:
                         full_text += f"\n[Page {i + 1}]\n{page_text}\n"
-                        print(f"[attachment_helper] ✅ Page {i+1}: Extracted {len(page_text)} chars")
+                        logger.info(f"Page {i+1}: Extracted {len(page_text)} chars with OCR")
 
                 except Exception as e:
-                    print(f"[attachment_helper] ❌ OCR failed for page {i + 1} — {e}")
+                    logger.error(f"OCR failed for page {i + 1}: {e}")
                     continue
 
     except Exception as e:
-        print(f"[attachment_helper] ❌ Could not open PDF for OCR — {e}")
+        logger.error(f"Could not open PDF for OCR: {e}")
         return ""
 
     return full_text.strip()
@@ -117,8 +126,10 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     try:
         with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
             if doc.is_encrypted:
+                logger.warning("PDF is encrypted, cannot extract text")
                 return "[LOCKED PDF: cannot extract text]"
 
+            logger.debug(f"Processing PDF with {len(doc)} pages")
             for page_num, page in enumerate(doc):
                 blocks = page.get_text("blocks")
                 if blocks:
@@ -130,19 +141,20 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
                     text += page.get_text("text") + "\n"
 
     except Exception as e:
+        logger.error(f"PDF extraction failed: {e}")
         return f"[ERROR: PDF extraction failed — {e}]"
 
     text = text.strip()
 
     # Step 2 — not meaningful means garbage/scanned → try EasyOCR
     if not _is_meaningful_text(text):
-        print(f"[attachment_helper] ⚠️ fitz text not meaningful ({len(text)} chars) — trying EasyOCR...")
+        logger.warning(f"fitz text not meaningful ({len(text)} chars) — trying OCR...")
         text = _extract_text_from_scanned_pdf(pdf_bytes)
 
         if text:
-            print(f"[attachment_helper] ✅ EasyOCR extracted {len(text)} chars")
+            logger.info(f"EasyOCR extracted {len(text)} chars")
         else:
-            print("[attachment_helper] ❌ EasyOCR also returned empty")
+            logger.warning("EasyOCR also returned empty")
 
     return text
 
@@ -157,13 +169,23 @@ def extract_text_from_excel(excel_bytes: bytes) -> str:
     text = ""
     try:
         wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
+        logger.debug(f"Processing Excel workbook with {len(wb.sheetnames)} sheets")
+        
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
             text += f"\n[Sheet: {sheet_name}]\n"
+            row_count = 0
             for row in ws.iter_rows(values_only=True):
                 values = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
                 if values:
                     text += " | ".join(values) + "\n"
+                    row_count += 1
+            
+            logger.debug(f"Sheet '{sheet_name}': extracted {row_count} rows")
+            
     except Exception as e:
+        logger.error(f"Excel extraction failed: {e}")
         return f"[ERROR: Excel extraction failed — {e}]"
+    
+    logger.info(f"Excel extraction completed: {len(text)} chars")
     return text.strip()

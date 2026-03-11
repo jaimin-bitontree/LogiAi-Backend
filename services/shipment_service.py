@@ -2,7 +2,7 @@ from typing import List
 from datetime import datetime
 from db.client import get_db
 from models.shipment import Shipment
-
+from typing import Optional
 # Statuses that mean a shipment is still active / awaiting a reply
 OPEN_STATUSES = ["MISSING_INFO", "PRICING_PENDING", "QUOTED"]
 
@@ -61,18 +61,55 @@ async def find_by_email_and_open_status(customer_email: str):
     return Shipment(**doc) if doc else None
 
 
-async def update_shipment_thread_id(request_id: str, new_message_id: str, attachments: List = None, new_message: dict = None):
-    """Update shipment by adding a new message_id and updating last_message_id.
-    Note: thread_id (conversation root) is NEVER updated after creation.
-    """
+async def update_shipment_thread_id(
+    request_id: str, 
+    new_thread_id: str, 
+    body: str = None,
+    translated_body: str = None,
+    translated_subject: str = None,
+    attachments: List = None, 
+    new_message: dict = None
+):
+    """Update shipment by adding a new message_id, updating thread pointers, appending attachments and messages.
+    Merges new body content with existing body to maintain full conversation context."""
     db = get_db()
+    
+    # Fetch existing shipment to get current body
+    existing_shipment = await db.shipments.find_one({"request_id": request_id})
+    
     update_ops = {
-        "$addToSet": {"message_ids": new_message_id},
+        "$addToSet": {"message_ids": new_thread_id},
         "$set": {
-            "last_message_id": new_message_id,  # Update to latest message
+            "thread_id": new_thread_id,
+            "last_message_id": new_thread_id,
             "updated_at": datetime.utcnow()
         },
     }
+
+    # Merge body: append new body to existing body with separator
+    if body and existing_shipment:
+        existing_body = existing_shipment.get("body", "")
+        if existing_body:
+            merged_body = f"{existing_body}\n\n--- Customer Reply ---\n\n{body}"
+        else:
+            merged_body = body
+        update_ops["$set"]["body"] = merged_body
+    elif body:
+        update_ops["$set"]["body"] = body
+    
+    # Merge translated_body: append new translated body to existing
+    if translated_body and existing_shipment:
+        existing_translated = existing_shipment.get("translated_body", "")
+        if existing_translated:
+            merged_translated = f"{existing_translated}\n\n--- Customer Reply ---\n\n{translated_body}"
+        else:
+            merged_translated = translated_body
+        update_ops["$set"]["translated_body"] = merged_translated
+    elif translated_body:
+        update_ops["$set"]["translated_body"] = translated_body
+    
+    if translated_subject:
+        update_ops["$set"]["translated_subject"] = translated_subject
 
     if attachments:
         # Convert Pydantic models to dict if they aren't already
@@ -86,7 +123,7 @@ async def update_shipment_thread_id(request_id: str, new_message_id: str, attach
 
     await db.shipments.update_one({"request_id": request_id}, update_ops)
 
-async def find_latest_by_email(customer_email: str) -> Optional[Shipment]:
+async def find_latest_by_email(customer_email: str):
     """Find the most recent shipment for a given customer email."""
     db = get_db()
     # Sort by created_at descending to get the latest one

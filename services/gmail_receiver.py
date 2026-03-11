@@ -1,5 +1,8 @@
 import imaplib
+import logging
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def connect_gmail() -> imaplib.IMAP4_SSL:
@@ -13,11 +16,11 @@ def connect_gmail() -> imaplib.IMAP4_SSL:
         return mail
 
     except imaplib.IMAP4.error as e:
-        print(f"❌ IMAP login failed: {e}")
+        logger.error(f"IMAP login failed: {e}")
         raise
 
     except OSError as e:
-        print(f"❌ Network error: {e}")
+        logger.error(f"Network error: {e}")
         raise
 
 
@@ -38,21 +41,21 @@ def fetch_unread_emails() -> list[bytes]:
         status, message_ids = mail.search(None, "UNSEEN")
 
         if status != "OK":
-            print("❌ Failed to search inbox.")
+            logger.error("Failed to search inbox.")
             return []
 
         if not message_ids or not message_ids[0]:
-            print("📭 No new emails.")
+            logger.info("No new emails.")
             return []
 
         ids = message_ids[0].split()
-        print(f"📬 Found {len(ids)} unread email(s).")
+        logger.info(f"Found {len(ids)} unread email(s).")
 
         for email_id in ids:
             status, data = mail.fetch(email_id, "(RFC822)")
 
             if status != "OK":
-                print(f"⚠️ Failed to fetch email ID {email_id}")
+                logger.warning(f"Failed to fetch email ID {email_id}")
                 continue
 
             if data and data[0]:
@@ -60,7 +63,7 @@ def fetch_unread_emails() -> list[bytes]:
                 if not raw_email:
                     continue
             else:
-                print("❌ No email data found, skipping...")
+                logger.error("No email data found, skipping...")
                 continue
 
             if raw_email:
@@ -70,7 +73,7 @@ def fetch_unread_emails() -> list[bytes]:
                 mail.store(email_id, "+FLAGS", "\\Seen")
 
     except Exception as e:
-        print(f"❌ Gmail receiver error: {e}")
+        logger.error(f"❌ Gmail receiver error: {e}")
 
     finally:
         if mail:

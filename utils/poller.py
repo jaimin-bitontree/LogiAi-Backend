@@ -7,13 +7,15 @@ from services.gmail_receiver import fetch_unread_emails
 from services.shipment_service import message_id_already_processed
 from utils.email_utils import extract_message_id
 from agent.workflow import run_workflow
+import logging
 
+logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
 
 async def job():
-    print(f"\n⏳ Polling at {datetime.now()}")
+    logger.info(f"⏳ Polling at {datetime.now()}")
 
     loop = asyncio.get_running_loop()
 
@@ -23,7 +25,7 @@ async def job():
             None, fetch_unread_emails
         )
 
-        print(f"📬 Found {len(raw_emails)} emails")
+        logger.info(f"📬 Found {len(raw_emails)} emails")
 
         # 🔹 Step 2: Process each email through LangGraph (run_workflow is now async)
         for raw in raw_emails:
@@ -31,31 +33,44 @@ async def job():
             try:
                 result = await run_workflow(raw)
                 if result:
-                    print(f"✅ Processed: {result.get('subject')}")
+                    logger.info(f"✅ Processed: {result.get('subject')}")
                 else:
-                    print("⚠️  No result from workflow")
+                    logger.warning("⚠️  No result from workflow")
 
             except Exception as e:
-                print(f"❌ Failed to process email: {e}")
+                logger.error(f"❌ Failed to process email: {e}")
 
     except Exception as e:
-        print(f"❌ Polling error: {e}")
+        logger.error(f"❌ Polling error: {e}")
 
 
-def start_poller():
-    if not scheduler.get_jobs():
-        scheduler.add_job(job, "interval", minutes=1)
+async def start_poller():
+    try:
+        if not scheduler.get_jobs():
+            scheduler.add_job(job, "interval", minutes=1)
 
-    scheduler.start()
-
-    # Run immediately once
-    asyncio.create_task(job())
-
-    print("🚀 Gmail Poller started")
+        scheduler.start()
+        logger.info("🚀 Gmail Poller started")
+        
+        # Run the first job immediately
+        logger.info("🔄 Running initial polling job...")
+        try:
+            await job()
+            logger.info("✅ Initial polling job completed successfully")
+        except Exception as e:
+            logger.error(f"❌ Initial polling job failed: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Don't raise here - let the scheduler handle future jobs
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to start poller: {e}")
+        raise
 
 
 def stop_poller():
     if scheduler.running:
         scheduler.shutdown()
-        print("🛑 Gmail Poller stopped")
+        logger.info("🛑 Gmail Poller stopped")
 

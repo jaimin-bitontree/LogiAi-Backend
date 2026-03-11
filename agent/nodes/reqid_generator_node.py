@@ -2,8 +2,8 @@ import logging
 import httpx
 from agent.state import AgentState
 from services.shipment_service import (
-    find_by_thread_id,
     find_by_any_message_id,
+    find_by_last_message_id,
     find_by_request_id,
     find_by_email_and_open_status,
     create_shipment,
@@ -16,13 +16,19 @@ logger = logging.getLogger(__name__)
 
 
 def _hydrate_state(state: AgentState, shipment: Shipment) -> AgentState:
-    """Copy shipment fields into agent state, skipping null values."""
+    """Copy shipment fields into agent state, preserving the latest incoming email content."""
     shipment_dict = shipment.model_dump()
+    
+    # FIELDS TO PRESERVE (The latest data from the new incoming email)
+    # These were set by parser, language, and intent nodes; we don't want to overwrite them with old DB values.
+    preserve = ["body", "translated_body", "translated_subject", "thread_id", "conversation_id", "messages", "intent"]
+    
     for key, value in shipment_dict.items():
+        if key in preserve:
+            continue
         if key in state and value is not None:
              state[key] = value
 
-    print(state)
     return state
 
 
@@ -74,16 +80,19 @@ async def generate_reqid(state: AgentState) -> AgentState:
             logger.info("Step 1 HIT — message already processed (dedup): %s", current_message_id)
             return _hydrate_state(state, shipment)
 
-    # ── Step 2: Check if In-Reply-To matches thread_id (conversation root) ─
+    # ── Step 2: Check if In-Reply-To matches last_message_id ─
     if conversation_id:
-        shipment = await _safe_lookup(find_by_thread_id, conversation_id)
+        shipment = await _safe_lookup(find_by_last_message_id, conversation_id)
         if shipment:
-            logger.info("Step 2 HIT — matched conversation root (thread_id): %s", conversation_id)
+            logger.info("Step 2 HIT — matched by last_message_id (In-Reply-To): %s", conversation_id)
             await update_shipment_thread_id(
                 shipment.request_id, 
                 current_message_id, 
+                body=state.get("body", ""),
+                translated_body=state.get("translated_body", ""),
+                translated_subject=state.get("translated_subject", ""),
                 attachments=state.get("attachments"),
-                new_message=_build_message(state).dict()
+                new_message=_build_message(state).model_dump()
             )
             return _hydrate_state(state, shipment)
 
@@ -95,8 +104,11 @@ async def generate_reqid(state: AgentState) -> AgentState:
             await update_shipment_thread_id(
                 shipment.request_id, 
                 current_message_id, 
+                body=state.get("body", ""),
+                translated_body=state.get("translated_body", ""),
+                translated_subject=state.get("translated_subject", ""),
                 attachments=state.get("attachments"),
-                new_message=_build_message(state).dict()
+                new_message=_build_message(state).model_dump()
             )
             return _hydrate_state(state, shipment)
 
@@ -108,32 +120,31 @@ async def generate_reqid(state: AgentState) -> AgentState:
             await update_shipment_thread_id(
                 shipment.request_id, 
                 current_message_id, 
+                body=state.get("body", ""),
+                translated_body=state.get("translated_body", ""),
+                translated_subject=state.get("translated_subject", ""),
                 attachments=state.get("attachments"),
-                new_message=_build_message(state).dict()
+                new_message=_build_message(state).model_dump()
             )
             return _hydrate_state(state, shipment)
 
     # ── Step 5: Lookup by email + open status ─────────────────────────────
-    # Skip this step for operator emails (they should match via In-Reply-To)
-    if customer_email and not state.get("is_operator"):
+    if customer_email:
         shipment = await _safe_lookup(find_by_email_and_open_status, customer_email)
         if shipment:
             logger.info("Step 5 HIT — matched by email %s with status %s", customer_email, shipment.status)
             await update_shipment_thread_id(
                 shipment.request_id, 
                 current_message_id, 
+                body=state.get("body", ""),
+                translated_body=state.get("translated_body", ""),
+                translated_subject=state.get("translated_subject", ""),
                 attachments=state.get("attachments"),
-                new_message=_build_message(state).dict()
+                new_message=_build_message(state).model_dump()
             )
             return _hydrate_state(state, shipment)
 
     # ── Step 6: Generate fresh request_id and store new shipment ──────────
-    # Operator emails should NEVER create new shipments
-    if state.get("is_operator"):
-        logger.error("Step 6 — Operator email did not match any shipment. This should not happen!")
-        logger.error("conversation_id=%s, current_message_id=%s", conversation_id, current_message_id)
-        state["status"] = "ERROR"
-        return state
     new_id = generate_request_id()
     state["request_id"] = new_id
     state["status"]     = "NEW"
@@ -163,11 +174,10 @@ async def generate_reqid(state: AgentState) -> AgentState:
 def _build_message(state: AgentState):
     """Helper to build Message object from state."""
     from models.shipment import Message
-    is_operator = state.get("is_operator", False)
     return Message(
         message_id=state.get("thread_id", ""),
         sender_email=state.get("customer_email", ""),
-        sender_type="operator" if is_operator else "customer",
+        sender_type="customer",
         direction="incoming",
         subject=state.get("subject"),
         body=state.get("body", ""),

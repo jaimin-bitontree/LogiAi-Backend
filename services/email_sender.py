@@ -1,9 +1,12 @@
 import smtplib
 import time
+import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def generate_message_id(request_id: str = "") -> str:
@@ -69,13 +72,13 @@ This is an automated message from LogiAI.
             server.login(settings.GMAIL_ADDRESS, settings.GMAIL_APP_PASSWORD)
             server.sendmail(settings.GMAIL_ADDRESS, to, msg.as_string())
 
-        print(f"✅ Email sent to {to} | Message-ID: {message_id}")
+        logger.info(f"Email sent to {to} | Message-ID: {message_id}")
         return message_id  # Return WITHOUT angle brackets
 
     except smtplib.SMTPException as e:
-        print(f"❌ SMTP error while sending email to {to}: {e}")
+        logger.error(f"SMTP error while sending email to {to}: {e}")
         raise RuntimeError(f"Failed to send email: {e}") from e
 
     except Exception as e:
-        print(f"❌ Unexpected error while sending email: {e}")
+        logger.error(f"Unexpected error while sending email: {e}")
         raise RuntimeError(f"Failed to send email: {e}") from e

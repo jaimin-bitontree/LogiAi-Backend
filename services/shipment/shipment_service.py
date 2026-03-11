@@ -240,6 +240,33 @@ async def push_pricing_details(request_id: str, pricing_data: dict) -> None:
         logger.info(f"Pricing details pushed | request_id: {request_id}")
 
 
+async def set_pricing_details(request_id: str, pricing_data: dict) -> None:
+    """
+    Replace entire pricing_details array with single merged pricing object.
+    Used for operator pricing updates to merge instead of append.
+    
+    Args:
+        request_id: The shipment's request_id to match.
+        pricing_data: Serialized PricingSchema dict to set (replaces entire array).
+    """
+    db = get_db()
+    
+    result = await db["shipments"].update_one(
+        {"request_id": request_id},
+        {
+            "$set": {
+                "pricing_details": [pricing_data],
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    if result.matched_count == 0:
+        logger.warning(f"No shipment found with request_id={request_id}")
+    else:
+        logger.info(f"Pricing details set (replaced) | request_id: {request_id}")
+
+
 # ============================================================
 # FETCH FUNCTIONS
 # ============================================================

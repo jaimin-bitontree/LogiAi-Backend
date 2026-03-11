@@ -103,10 +103,13 @@ async def cancel_shipment(request_id: str, customer_email: str) -> dict:
             received_at=datetime.utcnow()
         )
 
+        # Convert to dict immediately to avoid LangGraph serialization issues
+        outgoing_msg_dict = outgoing_msg.model_dump()
+
         # Update database with cancellation
         await push_message_log(
             request_id=shipment.request_id,
-            message=outgoing_msg.model_dump(),
+            message=outgoing_msg_dict,
             sent_message_id=outgoing_message_id,
             status="CANCELLED"
         )

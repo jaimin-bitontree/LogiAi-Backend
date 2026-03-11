@@ -37,6 +37,29 @@ def context_builder_node(state: AgentState) -> dict:
     else:
         missing_fields = []
 
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"[context_builder_node] Seeding agent with intent={intent} | request_id={request_id}")
+    
+    # Handle spam emails early (reqid node was skipped)
+    if intent == "spam":
+        # For spam emails, request_id will be empty since reqid node was skipped
+        # Set a placeholder
+        request_id = "SPAM"
+        
+        seed_message = f"""
+### SPAM EMAIL DETECTED ###
+CUSTOMER_EMAIL: {customer_email}
+SUBJECT: {subject}
+ACTION: HANDLE SPAM
+
+INSTRUCTIONS:
+Call handle_spam_email() to send rejection template."""
+        
+        msg = HumanMessage(content=seed_message.strip())
+        logger.debug(f"[context_builder_node] SPAM EMAIL SEED MESSAGE:\n{msg.content}\n")
+        return {"messages": [msg]}
+    
     # Extract customer_name from request_data if available
     customer_name = ""
     if isinstance(request_data, dict):
@@ -55,10 +78,6 @@ def context_builder_node(state: AgentState) -> dict:
     else:
         body_snippet = body[:200] + ("..." if len(body) > 200 else "")
 
-    logger = logging.getLogger(__name__)
-    
-    logger.info(f"[context_builder_node] Seeding agent with intent={intent} | request_id={request_id}")
-    
     directive = "EXTRACT ALL FIELDS" if intent == "new_request" else f"EXTRACT MISSING FIELDS: {missing_fields}"
     
     # Build seed message with all parameters needed for tool calls

@@ -23,11 +23,7 @@ from agent.tools.cancellation_tools import cancel_shipment
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-# ── All available tools for the agent ─────────────────────────
-=======
 # ── Only 4 tools — simple, small call signatures ─────────────
->>>>>>> b98cb2d703c5af9f1ba7de50538ec6d55aa8fae5
 TOOLS = [
     extract_shipment_fields,
     extract_missing_field_values,

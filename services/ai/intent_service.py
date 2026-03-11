@@ -48,6 +48,12 @@ Classify the given email into exactly ONE of these intents:
                          details like weight or volume are present. Also use this if the
                          email is too vague to process as a shipment request.
 
+7. spam - Email is clearly spam, phishing, marketing, or not related to logistics.
+          Look for: promotional content, phishing attempts, unrelated topics,
+          suspicious links, requests for personal info, "click here", "verify account"
+          Examples: "Congratulations you won!", "Verify your PayPal", "Buy cheap products"
+          CRITICAL: Only mark as spam if VERY CLEAR. When in doubt, use missing_information.
+
 CRITICAL DISTINCTION - READ CAREFULLY:
 - If email is REQUESTING pricing/quotation (customer asking) → new_request
 - If email is PROVIDING actual pricing/quotation (operator answering with numbers) → operator_pricing
@@ -59,7 +65,7 @@ reference, or customer reference found anywhere in the email. If none, set null.
 
 Respond ONLY in this exact JSON format, no extra text, no markdown:
 {
-  "intent": "<operator_pricing | new_request | status_inquiry | confirmation | cancellation | missing_information>",
+  "intent": "<operator_pricing | new_request | status_inquiry | confirmation | cancellation | missing_information | spam>",
   "request_id": "<extracted ID or null>"
 }
 """.strip()

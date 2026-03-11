@@ -108,7 +108,25 @@ builder.add_node("tools", ToolNode(TOOLS))
 builder.add_edge(START,             "parser")
 builder.add_edge("parser",          "language")
 builder.add_edge("language",        "intent")
-builder.add_edge("intent",          "reqid")
+
+# ── Conditional routing after intent ──────────────────────────
+def route_after_intent(state: AgentState) -> str:
+    """Route based on intent: spam goes directly to context_builder, others go to reqid"""
+    intent = state.get("intent", "")
+    
+    if intent == "spam":
+        logger.info("[workflow] Spam detected - routing directly to context_builder (skipping reqid)")
+        return "context_builder"
+    else:
+        return "reqid"
+
+builder.add_conditional_edges(
+    "intent",
+    route_after_intent,
+    {"context_builder": "context_builder", "reqid": "reqid"}
+)
+
+# Keep the fixed edge from reqid to context_builder
 builder.add_edge("reqid",           "context_builder")
 builder.add_edge("context_builder", "agent")           # Hand off to agent loop
 

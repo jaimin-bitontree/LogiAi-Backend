@@ -11,6 +11,7 @@ class EmailIntent(str, Enum):
     CONFIRMATION = "confirmation"
     CANCELLATION = "cancellation"
     MISSING_INFORMATION = "missing_information"
+    SPAM = "spam"
 
 
 # ===============================

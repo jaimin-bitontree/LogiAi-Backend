@@ -1,16 +1,16 @@
 from email import policy
 from email.parser import BytesParser
 from models.shipment import Attachment
-from utils.email_utils import (
+from utils.email.email_utils import (
     extract_email_address,
     extract_body,
     clean_email_body,
     extract_attachments,
 )
-from utils.attachment_helper import extract_text_from_pdf, extract_text_from_excel
+from utils.email.attachment_helper import extract_text_from_pdf, extract_text_from_excel
 from agent.state import AgentState
-from langchain_core.tools import tool
-from config import settings
+from config.settings import settings
+from langchain.tools import tool
 import re
 import logging
 
@@ -156,7 +156,7 @@ async def parser_node(state: AgentState) -> AgentState:
         
         # Strategy 1: Lookup by In-Reply-To header (reply email - most reliable)
         if parent_message_id:
-            from services.shipment_service import find_by_any_message_id
+            from services.shipment.shipment_service import find_by_any_message_id
             shipment = await find_by_any_message_id(parent_message_id)
             
             if shipment:
@@ -182,7 +182,7 @@ async def parser_node(state: AgentState) -> AgentState:
                 request_id = match.group(0)
                 logger.info(f"[parse_node] ✅ Extracted request_id from subject: {request_id}")
                 
-                from services.shipment_service import find_by_request_id
+                from services.shipment.shipment_service import find_by_request_id
                 shipment = await find_by_request_id(request_id)
                 
                 if shipment:
@@ -208,7 +208,7 @@ async def parser_node(state: AgentState) -> AgentState:
                 request_id = match.group(0)
                 logger.info(f"[parse_node] ✅ Extracted request_id from body: {request_id}")
                 
-                from services.shipment_service import find_by_request_id
+                from services.shipment.shipment_service import find_by_request_id
                 shipment = await find_by_request_id(request_id)
                 
                 if shipment:

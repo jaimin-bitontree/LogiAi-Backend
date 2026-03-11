@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-from services.shipment_service import find_by_request_id, find_by_thread_id, list_shipments
+from services.shipment.shipment_service import find_by_request_id, find_by_thread_id, list_shipments
 from models.shipment import Shipment
 from typing import List, Optional
 

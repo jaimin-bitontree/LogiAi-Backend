@@ -13,12 +13,12 @@ import logging
 from datetime import datetime
 from langchain_core.tools import tool
 
-from config import settings
-from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from config.settings import settings
+from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
-from services.email_sender import send_email
-from utils.email_template import build_email
-from api.shipment_service import push_message_log, get_request_data
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
+from services.shipment.shipment_service import push_message_log, get_request_data
 
 logger = logging.getLogger(__name__)
 

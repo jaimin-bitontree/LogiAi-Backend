@@ -3,9 +3,8 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from datetime import datetime
-from services.gmail_receiver import fetch_unread_emails
-from services.shipment_service import message_id_already_processed
-from utils.email_utils import extract_message_id
+from services.email.gmail_receiver import fetch_unread_emails
+from utils.email.email_utils import extract_message_id
 from agent.workflow import run_workflow
 import logging
 

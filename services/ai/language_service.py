@@ -1,7 +1,7 @@
 import logging
 from groq import Groq
 from langdetect import detect_langs, LangDetectException
-from config import settings
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 client = Groq(api_key=settings.GROQ_API_KEY)

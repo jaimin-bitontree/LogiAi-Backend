@@ -1,7 +1,7 @@
 import logging
 from agent.state import AgentState
 from models.shipment import IntentResult
-from services.intent_service import detect_intent
+from services.ai.intent_service import detect_intent
 
 logger = logging.getLogger(__name__)
 

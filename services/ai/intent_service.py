@@ -1,8 +1,8 @@
 import json
 import logging
 from groq import Groq
-from config import settings
-from core.constants import EmailIntent
+from config.settings import settings
+from config.constants import EmailIntent
 from models.shipment import IntentResult
 
 logger = logging.getLogger(__name__)

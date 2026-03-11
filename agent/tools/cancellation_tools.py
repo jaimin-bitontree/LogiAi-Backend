@@ -9,13 +9,13 @@ import logging
 from datetime import datetime
 from langchain_core.tools import tool
 
-from config import settings
-from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from config.settings import settings
+from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
-from services.cancellation_service import verify_cancellation_eligibility
-from services.email_sender import send_email
-from utils.email_template import build_email
-from api.shipment_service import push_message_log
+from services.shipment.cancellation_service import verify_cancellation_eligibility
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
+from services.shipment.shipment_service import push_message_log
 
 logger = logging.getLogger(__name__)
 

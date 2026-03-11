@@ -1,5 +1,5 @@
 """
-utils/email_template.py
+services/email/email_template.py
 
 Common HTML email builder for all outgoing LogiAI emails.
 
@@ -9,11 +9,12 @@ Section rules:
   - "status"       : status_banner   → extracted_data
 
 Usage:
-    from utils.email_template import build_email
+    from services.email.email_template import build_email
 """
 
 from html import escape
 from typing import Literal, List, Optional
+from models.shipment import PricingSchema
 
 
 # ─────────────────────────────────────────────────────────────

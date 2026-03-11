@@ -7,7 +7,7 @@ The LLM calls these tools to persist data after processing.
 
 import logging
 from langchain_core.tools import tool
-from api.shipment_service import push_message_log, update_shipment_data
+from services.shipment.shipment_service import push_message_log, update_shipment
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,21 @@ async def save_shipment_data(state_snapshot: dict) -> str:
 
     Returns: Confirmation string.
     """
-    await update_shipment_data(state_snapshot)
-    request_id = state_snapshot.get("request_id", "unknown")
+    request_id = state_snapshot.get("request_id", "")
+    if not request_id:
+        logger.error("[db_tools] No request_id in state_snapshot")
+        return "❌ Failed: No request_id provided"
+    
+    # Extract only the fields we want to update
+    updates = {}
+    for key in ["translated_body", "translated_subject", "language_metadata", "intent", "request_data", "validation_result", "status"]:
+        if key in state_snapshot:
+            updates[key] = state_snapshot[key]
+    
+    if not updates:
+        logger.warning("[db_tools] No fields to update for %s", request_id)
+        return f"⚠️ No fields to update for {request_id}"
+    
+    await update_shipment(request_id, updates)
     logger.info("[db_tools] Saved shipment data for %s", request_id)
     return f"✅ Saved shipment data for {request_id}"

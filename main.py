@@ -4,7 +4,7 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from config import settings
+from config.settings import settings
 from db.client import connect_db, close_db
 from utils.poller import start_poller, stop_poller
 from api.shipment_router import router as shipment_router

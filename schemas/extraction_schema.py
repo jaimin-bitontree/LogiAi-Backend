@@ -60,33 +60,44 @@ class ExtractionSchema(BaseModel):
     @classmethod
     def validate_incoterm(cls, v):
         if v and v not in INCOTERMS:
-            return None   # discard invalid value instead of crashing
+            raise ValueError(
+                f"Invalid package type: {v}. Must be one of: {INCOTERMS}"
+                )
+
         return v
 
     @field_validator("package_type")
     @classmethod
     def validate_package_type(cls, v):
         if v and v not in PACKAGE_TYPES:
-            return None
+            raise ValueError(
+                f"Invalid package type: {v}. Must be one of: {PACKAGE_TYPES}"
+                )
         return v
 
     @field_validator("shipment_type")
     @classmethod
     def validate_shipment_type(cls, v):
         if v and v not in SHIPMENT_TYPES:
-            return None
+            raise ValueError(
+                f"Invalid package type: {v}. Must be one of: {SHIPMENT_TYPES}"
+                )
         return v
 
     @field_validator("transport_mode")
     @classmethod
     def validate_transport_mode(cls, v):
         if v and v not in TRANSPORT_MODES:
-            return None
+            raise ValueError(
+                f"Invalid package type: {v}. Must be one of: {TRANSPORT_MODES}"
+                )
         return v
 
     @field_validator("container_type")
     @classmethod
     def validate_container_type(cls, v):
         if v and v not in CONTAINER_TYPES:
-            return None
+            raise ValueError(
+                f"Invalid package type: {v}. Must be one of: {CONTAINER_TYPES}"
+                )
         return v

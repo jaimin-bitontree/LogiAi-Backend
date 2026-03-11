@@ -13,7 +13,7 @@ import logging
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, AIMessage
 
-from config import settings, GROQ_API_KEYS
+from config.settings import settings, GROQ_API_KEYS
 from agent.tools.extraction_tool import extract_shipment_fields, extract_missing_field_values
 from agent.tools.email_tools import send_missing_info_email, send_complete_info_emails
 from agent.tools.pricing_tools import calculate_and_send_pricing

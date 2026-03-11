@@ -1,6 +1,6 @@
 from pydantic import BaseModel, field_validator
 from typing import Optional, Union
-from core.constants import (
+from config.constants import (
     INCOTERMS,
     PACKAGE_TYPES,
     SHIPMENT_TYPES,

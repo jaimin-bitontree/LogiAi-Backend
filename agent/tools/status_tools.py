@@ -9,14 +9,13 @@ import logging
 from datetime import datetime
 from langchain_core.tools import tool
 
-from config import settings
-from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from config.settings import settings
+from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
-from services.status_service import get_shipment_status_context
-from services.email_sender import send_email
-from utils.email_template import build_email
-from services.shipment_service import update_shipment_thread_id
-from api.shipment_service import update_shipment
+from services.shipment.status_service import get_shipment_status_context
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
+from services.shipment.shipment_service import update_shipment_thread_id, update_shipment
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +143,7 @@ async def update_shipment_status(request_id: str, new_status: str) -> dict:
         Result with success status
     """
     try:
-        from api.shipment_service import update_shipment
+        from services.shipment.shipment_service import update_shipment
         
         await update_shipment(request_id, {"status": new_status})
         

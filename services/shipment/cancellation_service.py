@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional
-from services.shipment_service import find_by_request_id
+from services.shipment.shipment_service import find_by_request_id
 
 async def verify_cancellation_eligibility(
     customer_email: str,

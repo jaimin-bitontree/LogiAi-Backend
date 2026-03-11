@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Optional
 from groq import Groq
-from config import settings
+from config.settings import settings
 from models.shipment import PricingSchema
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Literal
 from datetime import datetime
-from core.constants import EmailIntent
+from config.constants import EmailIntent
 
 
 class IntentResult(BaseModel):

@@ -15,11 +15,11 @@ from langgraph.graph import StateGraph, START, END
 # from langgraph.prebuilt import ToolNode  # Not available in this version
 
 from agent.state import AgentState
-from agent.nodes.parse_node import parser_node
-from agent.nodes.language_node import language_node
-from agent.nodes.intent_node import intent_node
-from agent.nodes.reqid_generator_node import generate_reqid
-from agent.nodes.context_builder_node import context_builder_node
+from agent.nodes.preprocessing.parse_node import parser_node
+from agent.nodes.preprocessing.language_node import language_node
+from agent.nodes.preprocessing.intent_node import intent_node
+from agent.nodes.preprocessing.reqid_generator_node import generate_reqid
+from agent.nodes.preprocessing.context_builder_node import context_builder_node
 from agent.agent_node import call_agent, TOOLS
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
 

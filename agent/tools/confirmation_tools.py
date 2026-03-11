@@ -9,12 +9,12 @@ import logging
 from datetime import datetime
 from langchain_core.tools import tool
 
-from config import settings
-from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from config.settings import settings
+from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
-from services.email_sender import send_email
-from utils.email_template import build_email
-from api.shipment_service import update_shipment_data, push_message_log
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
+from services.shipment.shipment_service import update_shipment, push_message_log
 from db.client import get_db
 
 logger = logging.getLogger(__name__)
@@ -149,8 +149,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
         )
 
         # 2. Update status to CONFIRMED
-        await update_shipment_data({
-            "request_id": request_id,
+        await update_shipment(request_id, {
             "status": "CONFIRMED",
         })
 

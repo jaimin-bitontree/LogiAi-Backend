@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from groq import Groq
 from pydantic import ValidationError
 from schemas.extraction_schema import ExtractionSchema
-from core.constants import (
+from config.constants import (
     INCOTERMS,
     PACKAGE_TYPES,
     SHIPMENT_TYPES,

@@ -1,7 +1,6 @@
 import logging
-import httpx
 from agent.state import AgentState
-from services.shipment_service import (
+from services.shipment.shipment_service import (
     find_by_any_message_id,
     find_by_last_message_id,
     find_by_request_id,

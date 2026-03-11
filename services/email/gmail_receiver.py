@@ -1,6 +1,6 @@
 import imaplib
 import logging
-from config import settings
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 

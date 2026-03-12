@@ -10,9 +10,9 @@ Optimized tool-calling:
 import logging
 from langchain_core.tools import tool
 
-from core.constants              import REQUIRED_FIELDS, OPTIONAL_FIELDS
-from services.extraction_service import extract_fields, extract_missing_fields
-from api.shipment_service        import update_shipment_data, get_shipment_by_request_id
+from config.constants              import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from services.ai.extraction_service import extract_fields, extract_missing_fields
+from services.shipment.shipment_service import update_shipment, get_shipment_by_request_id
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +89,10 @@ async def extract_shipment_fields(request_id: str) -> dict:
 
     # Step 5 — Save results to MongoDB
     # This keeps DB in sync so email tools see the latest data
-    await update_shipment_data({
-        "request_id":        request_id,
-        "request_data":      request_data,
+    await update_shipment(request_id, {
+        "request_data": request_data,
         "validation_result": validation,
-        "status":            "NEW",
+        "status": "NEW",
     })
 
     _log_extraction_result(email_subject, schema_dict, validation)
@@ -173,9 +172,8 @@ async def extract_missing_field_values(
     validation = _compute_validation(required_data)
 
     # Step 6 — Save merged data back to MongoDB
-    await update_shipment_data({
-        "request_id":        request_id,
-        "request_data":      request_data,
+    await update_shipment(request_id, {
+        "request_data": request_data,
         "validation_result": validation,
     })
 

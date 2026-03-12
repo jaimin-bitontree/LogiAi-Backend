@@ -13,12 +13,12 @@ import logging
 from datetime import datetime
 from langchain_core.tools import tool
 
-from config import settings
-from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from config.settings import settings
+from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
-from services.email_sender import send_email
-from utils.email_template import build_email
-from api.shipment_service import push_message_log, get_request_data
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
+from services.shipment.shipment_service import push_message_log, get_request_data
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ async def send_missing_info_email(
 
     await push_message_log(
         request_id      = request_id,
-        message         = message_log.model_dump(),
+        message         = message_log,
         sent_message_id = sent_message_id,
         status          = "MISSING_INFO",
     )
@@ -211,13 +211,13 @@ async def send_complete_info_emails(
 
     await push_message_log(
         request_id      = request_id,
-        message         = customer_log.model_dump(),
+        message         = customer_log,
         sent_message_id = customer_msg_id,
         status          = "PRICING_PENDING",
     )
     await push_message_log(
         request_id      = request_id,
-        message         = operator_log.model_dump(),
+        message         = operator_log,
         sent_message_id = operator_msg_id,
         status          = "PRICING_PENDING",
     )

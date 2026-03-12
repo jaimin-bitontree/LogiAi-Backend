@@ -1,7 +1,7 @@
-from config import settings
+from config.settings import settings
 from agent.state import AgentState
 from models.shipment import LanguageMetadata
-from services.language_service import detect_language, translate_with_llm
+from services.ai.language_service import detect_language, translate_with_llm
 
 
 def language_node(state: AgentState) -> dict:

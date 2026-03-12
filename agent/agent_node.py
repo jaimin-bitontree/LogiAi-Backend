@@ -13,13 +13,14 @@ import logging
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, AIMessage
 
-from config import settings, GROQ_API_KEYS
+from config.settings import settings, GROQ_API_KEYS
 from agent.tools.extraction_tool import extract_shipment_fields, extract_missing_field_values
 from agent.tools.email_tools import send_missing_info_email, send_complete_info_emails
 from agent.tools.pricing_tools import calculate_and_send_pricing
 from agent.tools.status_tools import send_status_update, update_shipment_status
 from agent.tools.confirmation_tools import process_shipment_confirmation
 from agent.tools.cancellation_tools import cancel_shipment
+from agent.tools.spam_tools import handle_spam_email
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ TOOLS = [
     update_shipment_status,
     process_shipment_confirmation,
     cancel_shipment,
+    handle_spam_email,
 ]
 
 # ── Model fallback list (in order of preference) ──────────────
@@ -82,6 +84,7 @@ You have access to these tools:
 7. update_shipment_status(request_id: str, new_status: str) - Update shipment status in database
 8. process_shipment_confirmation(request_id: str, customer_email: str) - Handle customer confirmation
 9. cancel_shipment(request_id: str, customer_email: str) - Process cancellation request
+10. handle_spam_email(customer_email: str, subject: str) - Handle spam/phishing emails
 
 WORKFLOW:
 
@@ -108,6 +111,9 @@ For intent "cancellation":
 
 For intent "operator_pricing":
 1. Call calculate_and_send_pricing(request_id="REQ-...", pricing_email_body="..."), then STOP IMMEDIATELY
+
+For intent "spam":
+1. Call handle_spam_email(customer_email="...", subject="..."), then STOP IMMEDIATELY
 
 CRITICAL RULES:
 - Extract request_id, customer_email, customer_name, subject from the input message

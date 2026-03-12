@@ -9,16 +9,50 @@ import logging
 from datetime import datetime
 from langchain_core.tools import tool
 
-from config import settings
-from core.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
-from models.shipment import Message
-from services.pricing_service import extract_pricing_data
-from services.email_sender import send_email
-from utils.email_template import build_email
-from api.shipment_service import push_message_log, get_shipment_by_request_id
-from db.client import get_db
+from config.settings import settings
+from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from models.shipment import Message, PricingSchema
+from services.ai.pricing_service import extract_pricing_data
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
+from services.shipment.shipment_service import push_message_log, get_shipment_by_request_id, set_pricing_details
 
 logger = logging.getLogger(__name__)
+
+
+def merge_pricing_data(existing_pricing: PricingSchema, new_pricing: PricingSchema) -> PricingSchema:
+    """Merge new pricing with existing pricing intelligently.
+    
+    New values override existing, but missing fields in new data keep existing values.
+    
+    Args:
+        existing_pricing: Existing PricingSchema object
+        new_pricing: New PricingSchema object from operator email
+        
+    Returns:
+        Merged PricingSchema object
+    """
+    logger.debug(f"[merge_pricing_data] Merging pricing data")
+    
+    # Convert to dicts for easier manipulation
+    existing_dict = existing_pricing.model_dump()
+    new_dict = new_pricing.model_dump()
+    
+    merged_dict = {}
+    
+    # Merge all fields
+    for field, new_value in new_dict.items():
+        # If new value exists (not None, not empty string, not empty list)
+        if new_value is not None and new_value != "" and new_value != []:
+            merged_dict[field] = new_value
+            logger.debug(f"  {field}: using new value")
+        else:
+            # Keep existing value
+            merged_dict[field] = existing_dict.get(field)
+            logger.debug(f"  {field}: keeping existing value")
+    
+    logger.debug(f"[merge_pricing_data] Merge complete")
+    return PricingSchema(**merged_dict)
 
 
 @tool
@@ -90,7 +124,17 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
             request_id=request_id
         )
 
-        # 5. Log interaction
+        # 5. Check for existing pricing and merge if needed
+        existing_pricing_list = shipment_doc.get("pricing_details", [])
+        if existing_pricing_list:
+            logger.debug(f"Found existing pricing, merging with new pricing")
+            existing_pricing = PricingSchema(**existing_pricing_list[0])
+            pricing_data = merge_pricing_data(existing_pricing, pricing_data)
+            logger.debug(f"Pricing merged successfully")
+        else:
+            logger.debug(f"No existing pricing, using new pricing as-is")
+
+        # 6. Log interaction
         outgoing_msg = Message(
             message_id=outgoing_message_id,
             sender_email=settings.GMAIL_ADDRESS,
@@ -101,19 +145,20 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
             received_at=datetime.utcnow()
         )
 
-        # 6. Update database
+        
+
+        # 7. Update database
         await push_message_log(
             request_id=request_id,
-            message=outgoing_msg.model_dump(),
+            message=outgoing_msg,
             sent_message_id=outgoing_message_id,
             status="QUOTED"
         )
         
-        # Save pricing details
-        db = get_db()
-        await db.shipments.update_one(
-            {"request_id": request_id},
-            {"$push": {"pricing_details": pricing_data.model_dump()}}
+        # Save pricing details using service layer (replace, not append)
+        await set_pricing_details(
+            request_id=request_id,
+            pricing_data=pricing_data.model_dump()
         )
 
         logger.info(f"[pricing_tools] Quote sent for {request_id} to {customer_email}")

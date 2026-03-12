@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from groq import Groq
 from pydantic import ValidationError
 from schemas.extraction_schema import ExtractionSchema
-from core.constants import (
+from config.constants import (
     INCOTERMS,
     PACKAGE_TYPES,
     SHIPMENT_TYPES,
@@ -107,15 +107,28 @@ def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
             ],
             temperature=0.0,
             max_tokens=1024,
+            response_format={"type": "json_object"}  # Force JSON output
         )
 
         raw_text = response.choices[0].message.content.strip()
+        
+        if not raw_text:
+            logger.error("LLM returned empty content")
+            raise ValueError("LLM returned empty content")
+        
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        if not raw_text:
+            logger.error("Empty after cleaning markdown")
+            raise ValueError("Empty response after cleaning markdown")
+        
         parsed = json.loads(raw_text)
 
         return ExtractionSchema(**parsed)
 
     except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {e}")
+        logger.debug(f"Raw text was: {raw_text if 'raw_text' in locals() else 'N/A'}")
         raise ValueError(f"Invalid JSON from LLM: {e}")
     except ValidationError as e:
         raise ValueError(f"Schema validation error: {e}")

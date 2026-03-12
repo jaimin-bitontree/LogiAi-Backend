@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any, Optional
-from services.shipment_service import (
+from services.shipment.shipment_service import (
     find_by_request_id,
     find_by_last_message_id,
     find_latest_by_email

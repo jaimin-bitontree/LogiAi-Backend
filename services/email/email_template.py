@@ -1,5 +1,5 @@
 """
-utils/email_template.py
+services/email/email_template.py
 
 Common HTML email builder for all outgoing LogiAI emails.
 
@@ -9,11 +9,12 @@ Section rules:
   - "status"       : status_banner   → extracted_data
 
 Usage:
-    from utils.email_template import build_email
+    from services.email.email_template import build_email
 """
 
 from html import escape
 from typing import Literal, List, Optional
+from models.shipment import PricingSchema
 
 
 # ─────────────────────────────────────────────────────────────
@@ -245,6 +246,42 @@ def _section_status(status: str, message: Optional[str]) -> str:
     """
 
 
+def _section_spam_rejection() -> str:
+    """Spam rejection message template"""
+    return """
+    <div style="background:#f8f9fa;padding:24px;border-radius:6px;margin-bottom:24px;">
+        <h3 style="margin-top:0;color:#2c3e50;">Thank You for Your Email</h3>
+        
+        <p style="color:#555;line-height:1.6;">
+            We appreciate you reaching out to LogiAI. However, we are unable to process your request 
+            as it does not appear to be related to our logistics services.
+        </p>
+        
+        <p style="color:#555;line-height:1.6;">
+            If you believe this is an error or have a legitimate shipment inquiry, 
+            please reply to this email with clear details about your shipment requirements, including:
+        </p>
+        
+        <ul style="color:#555;line-height:1.8;">
+            <li>Origin location (city, country)</li>
+            <li>Destination location (city, country)</li>
+            <li>Cargo details (weight, dimensions, type)</li>
+            <li>Preferred transport mode (Sea, Air, Road, Rail)</li>
+        </ul>
+        
+        <p style="color:#555;line-height:1.6;">
+            Our team will be happy to assist you with your logistics needs.
+        </p>
+        
+        <p style="color:#888;font-size:14px;margin-top:24px;">
+            Best regards,<br>
+            <strong>LogiAI Team</strong><br>
+            Intelligent Logistics Management
+        </p>
+    </div>
+    """
+
+
 # ─────────────────────────────────────────────────────────────
 # PUBLIC API
 # ─────────────────────────────────────────────────────────────
@@ -252,9 +289,9 @@ def _section_status(status: str, message: Optional[str]) -> str:
 from models.shipment import PricingSchema
 
 def build_email(
-    email_type:    Literal["missing_info", "pricing", "status"],
-    customer_name: str,
-    request_id:    str,
+    email_type:    Literal["missing_info", "pricing", "status", "spam"],
+    customer_name: str = "",
+    request_id:    str = "",
 
     # Always included — shown in every email
     request_data:  Optional[dict]      = None,
@@ -272,6 +309,10 @@ def build_email(
     
     # Custom next steps list
     next_steps: Optional[List[str]] = None,
+    
+    # spam only
+    customer_email: Optional[str] = None,
+    subject: Optional[str] = None,
 ) -> str:
     """
     Build a full HTML email body for any outgoing LogiAI email.
@@ -280,7 +321,36 @@ def build_email(
       missing_info : extracted_data  →  missing_fields
       pricing      : pricing (top)   →  extracted_data
       status       : status_banner   →  extracted_data
+      spam         : spam_rejection
     """
+    # Handle spam emails separately
+    if email_type == "spam":
+        return f"""
+        <html>
+        <body style="font-family:Arial,sans-serif;color:#333;
+                     max-width:660px;margin:auto;padding:28px;background-color:#f9f9f9;">
+
+          <div style="background:#fff;border:1px solid #ddd;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+            
+            <!-- Header -->
+            <div style="padding:32px 24px 20px;text-align:center;">
+              <h1 style="color:#2c3e50;margin:0;font-size:26px;font-weight:600;">
+                LogiAI — Shipment Management
+              </h1>
+            </div>
+
+            <hr style="border:none;border-top:1px solid #eee;margin:0;">
+
+            <!-- Content -->
+            <div style="padding:28px 24px;">
+              {_section_spam_rejection()}
+            </div>
+          </div>
+
+        </body>
+        </html>
+        """
+    
     _rd  = request_data or {}
     _af  = all_fields   or []
     data_section = _section_extracted_data(_rd, _af)

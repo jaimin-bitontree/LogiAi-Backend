@@ -41,7 +41,8 @@ async def upload_excel_to_cloudinary(file_bytes: bytes, filename: str) -> dict:
             file_bytes,
             resource_type="raw",
             folder="logiai_excel",
-            public_id=clean_filename,  
+            public_id=clean_filename,
+            format="xls",  
             flags="attachment"
         )
         return {

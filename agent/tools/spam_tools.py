@@ -54,8 +54,16 @@ async def handle_spam_email(
         
         logger.info(f"[spam_tools] Spam rejection sent to {customer_email} | msg_id={sent_message_id}")
         
-        return f"✅ Spam email handled | msg_id={sent_message_id}"
+        return {
+            "success" : True,
+            "message" : "Successfully handled spam mail",
+            "message_id": sent_message_id
+            
+        }
         
     except Exception as e:
         logger.error(f"[spam_tools] Error handling spam email: {e}")
-        return f"❌ Failed to handle spam email: {str(e)}"
+        return {
+        "success": False,
+        "error": str(e)
+    }

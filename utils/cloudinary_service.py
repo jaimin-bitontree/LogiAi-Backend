@@ -18,7 +18,9 @@ async def upload_pdf_to_cloudinary(file_bytes: bytes, filename: str) -> dict:
             file_bytes,
             resource_type="raw",
             folder="logiai_pdfs",
-            public_id=filename.replace(".pdf", "")
+            public_id=filename.replace(".pdf", ""),
+            format="pdf",  
+            
         )
         return {
             "public_id": result["public_id"],
@@ -39,7 +41,8 @@ async def upload_excel_to_cloudinary(file_bytes: bytes, filename: str) -> dict:
             file_bytes,
             resource_type="raw",
             folder="logiai_excel",
-            public_id=clean_filename
+            public_id=clean_filename,  
+            flags="attachment"
         )
         return {
             "public_id": result["public_id"],

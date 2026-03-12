@@ -24,21 +24,6 @@ from services.ai.language_service import translate_to_language
 logger = logging.getLogger(__name__)
 
 
-def _get_detected_language(shipment_doc: dict) -> str:
-    """
-    Extract detected_language from shipment document's language_metadata.
-    Returns 'en' if not found or not set.
-    """
-    if not shipment_doc:
-        return "en"
-    lang_meta = shipment_doc.get("language_metadata", {})
-    if isinstance(lang_meta, dict):
-        return lang_meta.get("detected_language", "en") or "en"
-    elif hasattr(lang_meta, "detected_language"):
-        return lang_meta.detected_language or "en"
-    return "en"
-
-
 @tool
 async def send_missing_info_email(
     request_id:     str,
@@ -65,14 +50,14 @@ async def send_missing_info_email(
     # Fetch extracted data from DB (saved by extraction tool)
     request_data = await get_request_data(request_id)
     all_fields   = REQUIRED_FIELDS + OPTIONAL_FIELDS
-    
+
     # Create field options mapping from constants
     field_options = {
-        "package_type": PACKAGE_TYPES,
+        "package_type":   PACKAGE_TYPES,
         "container_type": CONTAINER_TYPES,
-        "incoterm": INCOTERMS,
-        "shipment_type": SHIPMENT_TYPES,
-        "transport_mode": TRANSPORT_MODES
+        "incoterm":       INCOTERMS,
+        "shipment_type":  SHIPMENT_TYPES,
+        "transport_mode": TRANSPORT_MODES,
     }
 
     html = build_email(
@@ -90,12 +75,16 @@ async def send_missing_info_email(
         ]
     )
 
-    # Translate reply to customer's language if needed 
+    # ── Get detected language from DB ────────────────────────────
     shipment_doc  = await get_shipment_by_request_id(request_id)
-    detected_lang = _get_detected_language(shipment_doc)
+    lang_meta     = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
+    detected_lang = (lang_meta.get("detected_language") or "en") if isinstance(lang_meta, dict) else "en"
+
+    # ── Translate body + subject if needed ───────────────────────
     if detected_lang != "en":
         logger.info(f"[email_tools] Translating missing_info email to '{detected_lang}' for {customer_email}")
-        html = translate_to_language(html, detected_lang)
+        html    = translate_to_language(html, detected_lang)
+        subject = translate_to_language(subject, detected_lang)
 
     email_subject   = f"Re: {subject} — Additional Information Required"
     sent_message_id = send_email(
@@ -156,11 +145,12 @@ async def send_complete_info_emails(
     all_fields     = REQUIRED_FIELDS + OPTIONAL_FIELDS
     operator_email = settings.OPERATOR_EMAIL
 
-    # Get customer's language
+    # ── Get detected language from DB ────────────────────────────
     shipment_doc  = await get_shipment_by_request_id(request_id)
-    detected_lang = _get_detected_language(shipment_doc)
+    lang_meta     = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
+    detected_lang = (lang_meta.get("detected_language") or "en") if isinstance(lang_meta, dict) else "en"
 
-    # Customer confirmation email
+    # ── Customer confirmation email ───────────────────────────────
     customer_html = build_email(
         email_type    = "status",
         customer_name = customer_name,
@@ -179,20 +169,21 @@ async def send_complete_info_emails(
         ]
     )
 
-    # Translate customer email if needed
+    # ── Translate body + subject if needed ───────────────────────
+    customer_subject = f"Re: {subject} — Request Received ✅"
     if detected_lang != "en":
         logger.info(f"[email_tools] Translating complete_info email to '{detected_lang}' for {customer_email}")
-        customer_html = translate_to_language(customer_html, detected_lang)
+        customer_html    = translate_to_language(customer_html, detected_lang)
+        customer_subject = translate_to_language(customer_subject, detected_lang)
 
-    customer_subject = f"Re: {subject} — Request Received ✅"
-    customer_msg_id  = send_email(
+    customer_msg_id = send_email(
         to         = customer_email,
         subject    = customer_subject,
         body_html  = customer_html,
         request_id = request_id,
     )
 
-    # Operator notification email (always English)
+    # ── Operator notification email (always English) ─────────────
     logger.debug(f"OPERATOR_EMAIL from settings: '{operator_email}'")
     logger.info(f"[email_tools] Sending operator notification to: {operator_email}")
 
@@ -202,18 +193,15 @@ async def send_complete_info_emails(
         return f"✅ Customer email sent | customer_msg_id={customer_msg_id} | ❌ Operator email failed: {error_msg}"
 
     try:
-        logger.debug(f"Building operator email template...")
         operator_html = build_email(
-            email_type      = "pricing",
-            customer_name   = "Operator",
-            request_id      = request_id,
-            request_data    = request_data,
-            all_fields      = all_fields,
+            email_type    = "pricing",
+            customer_name = "Operator",
+            request_id    = request_id,
+            request_data  = request_data,
+            all_fields    = all_fields,
         )
         operator_subject = f"New Shipment Request — {request_id}"
-        logger.debug(f"Operator email template built successfully")
 
-        logger.info(f"[email_tools] Attempting to send operator email...")
         operator_msg_id = send_email(
             to         = operator_email,
             subject    = operator_subject,
@@ -226,7 +214,7 @@ async def send_complete_info_emails(
         logger.error(f"[email_tools] {error_msg}")
         return f"✅ Customer email sent | customer_msg_id={customer_msg_id} | ❌ Operator email failed: {e}"
 
-    # Log both to DB
+    # ── Log both to DB ────────────────────────────────────────────
     customer_log = Message(
         message_id   = customer_msg_id,
         sender_email = settings.GMAIL_ADDRESS,

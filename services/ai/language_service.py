@@ -10,9 +10,9 @@ client = Groq(api_key=settings.GROQ_API_KEY)
 def detect_language(text: str) -> tuple[str, float]:
     """Detect language using langdetect with LLM fallback."""
     try:
-        results = detect_langs(text)
-        top = results[0]
-        lang = str(top.lang)
+        results    = detect_langs(text)
+        top        = results[0]
+        lang       = str(top.lang)
         confidence = float(top.prob)
     except LangDetectException:
         return "en", 0.0
@@ -90,6 +90,7 @@ def translate_to_language(text: str, target_lang: str) -> str:
     try:
         response = client.chat.completions.create(
             model=settings.LANGUAGE_TRANSLATE_MODEL,
+            max_tokens=4000,
             messages=[
                 {
                     "role": "system",
@@ -102,7 +103,7 @@ def translate_to_language(text: str, target_lang: str) -> str:
                         f"Return only the translated result, nothing else."
                     )
                 },
-                {"role": "user", "content": text[:4000]}
+                {"role": "user", "content": text[:8000]}
             ],
             temperature=0
         )

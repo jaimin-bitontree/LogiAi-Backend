@@ -18,7 +18,7 @@ class Attachment(BaseModel):
     filename:     str
     content_type: str
     url: Optional[str] = None
-    content: Optional[bytes] = None
+    public_id: Optional[str] = None
     public_id: Optional[str] = None
 
 

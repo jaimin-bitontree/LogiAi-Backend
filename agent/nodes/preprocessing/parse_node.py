@@ -79,7 +79,7 @@ async def parser_node(state: AgentState) -> AgentState:
         Attachment(
             filename=a["filename"],
             content_type=a["content_type"],
-            content=a.get("content")  # keep the file bytes
+           
         )
         for a in raw_attachments
     ]
@@ -99,7 +99,7 @@ async def parser_node(state: AgentState) -> AgentState:
             )
         )
 
-        if is_pdf and att.content:
+        if is_pdf:
             try:
                 logger.info(f"[parse_node] Extracting PDF: {att.filename}")
                 pdf_text = extract_text_from_pdf(att.content)
@@ -128,7 +128,7 @@ async def parser_node(state: AgentState) -> AgentState:
                 logger.error(f"[parse_node] PDF extraction failed: {att.filename} — {e}")
                 updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a digital PDF]"
 
-        elif is_excel and att.content:
+        elif is_excel:
             try:
                 logger.info(f"[parse_node] Extracting Excel: {att.filename}")
                 excel_text = extract_text_from_excel(att.content)
@@ -149,6 +149,7 @@ async def parser_node(state: AgentState) -> AgentState:
                 if cloudinary_result:
                     att.public_id = cloudinary_result["public_id"]
                     att.url = cloudinary_result["url"]
+                    
                     logger.info(f"[parse_node] Excel uploaded to Cloudinary | public_id={att.public_id}")
                 else:
                     logger.warning(f"[parse_node] Failed to upload Excel to Cloudinary: {att.filename}")
@@ -244,7 +245,7 @@ async def parser_node(state: AgentState) -> AgentState:
                     state["request_data"] = shipment.request_data
                     state["status"] = shipment.status
                     state["pricing_details"] = shipment.pricing_details
-                    state["messages"] = shipment.messages
+                    # state["messages"] = shipment.messages
                 else:
                     logger.warning(f"[parse_node] ❌ No shipment found for request_id: {request_id}")
             else:

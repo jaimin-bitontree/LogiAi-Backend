@@ -16,9 +16,12 @@ INTENT_SYSTEM_PROMPT = """
 You are an email intent classifier for a logistics platform called LogiAI.
 
 You will receive an email with a Subject line and a Body.
-Both the subject and body together form the full context read BOTH carefully.
+Both the subject and body together form the full context — read BOTH carefully.
 The subject alone may reveal the intent even if the body is short or vague.
 Emails may be written as plain conversational paragraphs with no labels or structure.
+
+The body may also contain text extracted from PDF attachments marked as [PDF: filename].
+READ the PDF content carefully — it is part of the email context and may contain all shipment details.
 
 Classify the given email into exactly ONE of these intents:
 
@@ -28,11 +31,14 @@ Classify the given email into exactly ONE of these intents:
                       Examples: "Your quotation is $2,500", "Freight rate: EUR 1,800", "Total cost: $3,200"
                       IMPORTANT: Must have actual dollar amounts or detailed pricing breakdown
 
-2. new_request - Customer is REQUESTING a new shipment quotation AND provides BOTH a clear origin
-                AND a clear destination. Both must be present for new_request.
+2. new_request - Customer is sending a shipment request that includes BOTH a clear origin AND a clear destination.
+                Both must be present somewhere in the email OR in the attached PDF content.
                 Keywords: "request quotation", "need quote", "please provide pricing", "shipment request"
                 Examples: "I would like to request a quotation", "Please provide pricing for shipment"
+                IMPORTANT: If the PDF attachment contains origin and destination → classify as new_request
                 IMPORTANT: If someone is ASKING for pricing, it's new_request, NOT operator_pricing
+                IMPORTANT: Even if the email body text is vague or short (e.g. "please refer attachments"),
+                           if the PDF content has origin + destination → it is new_request
 
 3. status_inquiry - Sender is asking about the status of an existing shipment/order.
                    Keywords: "status", "update", "where is my shipment", "tracking"
@@ -44,18 +50,20 @@ Classify the given email into exactly ONE of these intents:
 5. cancellation - Sender wants to cancel an existing shipment or order.
                  Keywords: "cancel", "stop", "abort", "withdraw"
 
-6. missing_information - Email is missing origin OR destination OR both, even if other
-                         details like weight or volume are present. Also use this if the
-                         email is too vague to process as a shipment request.
+6. missing_information - Use this ONLY if origin OR destination is missing from BOTH the email text
+                         AND the PDF content. Also use if there is no shipment-related content at all.
 
 CRITICAL DISTINCTION - READ CAREFULLY:
 - If email is REQUESTING pricing/quotation (customer asking) → new_request
 - If email is PROVIDING actual pricing/quotation (operator answering with numbers) → operator_pricing
 - Words like "request quotation", "need quote", "please provide" = new_request
 - Only use operator_pricing if you see actual dollar amounts, rates, or prices being PROVIDED
+- PDF content counts as part of the email — if PDF has origin + destination → new_request
 
-Also extract "request_id" — any shipment ID, order ID, tracking number, booking
-reference, or customer reference found anywhere in the email. If none, set null.
+Also extract "request_id" — ONLY extract IDs that follow this exact format: REQ-YYYY-XXXXXXXXXX
+Example: REQ-2026-0311081356708170
+Any other document numbers like PKL-, INV-, DOC-, SC- are NOT request IDs → set null.
+If no REQ- format ID found → set null.
 
 Respond ONLY in this exact JSON format, no extra text, no markdown:
 {
@@ -83,7 +91,7 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
 
     try:
         response = client.chat.completions.create(
-            model=settings.LANGUAGE_DETECT_MODEL,   # uses llama-3.1-8b-instant from config
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": INTENT_SYSTEM_PROMPT},
                 {
@@ -92,7 +100,7 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
                 },
             ],
             temperature=0.1,
-            max_tokens=64,   
+            max_tokens=64,
         )
 
         raw_text = response.choices[0].message.content.strip()

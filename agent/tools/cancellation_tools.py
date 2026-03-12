@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-async def cancel_shipment(request_id: str, customer_email: str) -> dict:
+async def cancel_shipment(request_id: str, customer_email: str) -> str:
     """Cancel a shipment request.
     
     Args:
@@ -29,7 +29,7 @@ async def cancel_shipment(request_id: str, customer_email: str) -> dict:
         customer_email: Customer email address
         
     Returns:
-        Result with cancellation status and details
+        Confirmation string with sent message ID
     """
     try:
         logger.info(f"[cancellation_tools] Processing cancellation for {request_id}")
@@ -60,11 +60,7 @@ async def cancel_shipment(request_id: str, customer_email: str) -> dict:
                 request_id=request_id or ""
             )
             
-            return {
-                "success": False,
-                "error": error_msg,
-                "message_id": outgoing_message_id
-            }
+            return f"❌ Cancellation rejected: {error_msg} | msg_id={outgoing_message_id}"
 
         # 2. Process cancellation
         shipment = verification["shipment"]
@@ -108,20 +104,15 @@ async def cancel_shipment(request_id: str, customer_email: str) -> dict:
         # Update database with cancellation
         await push_message_log(
             request_id=shipment.request_id,
-            message=outgoing_msg,
+            message=outgoing_msg.model_dump(),
             sent_message_id=outgoing_message_id,
             status="CANCELLED"
         )
 
         logger.info(f"[cancellation_tools] Shipment {shipment.request_id} cancelled")
         
-        return {
-            "success": True,
-            "message": f"Shipment {shipment.request_id} cancelled successfully",
-            "status": "CANCELLED",
-            "message_id": outgoing_message_id
-        }
+        return f"✅ Cancellation email sent to {customer_email} | msg_id={outgoing_message_id} | status=CANCELLED"
 
     except Exception as e:
         logger.error(f"[cancellation_tools] Error processing cancellation: {e}")
-        return {"success": False, "error": str(e)}
+        return f"❌ Failed to process cancellation: {str(e)}"

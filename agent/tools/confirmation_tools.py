@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-async def process_shipment_confirmation(request_id: str, customer_email: str) -> dict:
+async def process_shipment_confirmation(request_id: str, customer_email: str) -> str:
     """Process customer shipment confirmation.
     
     Args:
@@ -29,7 +29,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
         customer_email: Customer email address
         
     Returns:
-        Result with confirmation status and details
+        Confirmation string with sent message IDs
     """
     try:
         logger.info(f"[confirmation_tools] Processing confirmation for {request_id}")
@@ -39,7 +39,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
         shipment = await db.shipments.find_one({"request_id": request_id})
 
         if not shipment:
-            return {"success": False, "error": f"Shipment {request_id} not found"}
+            return f"❌ Shipment {request_id} not found"
 
         current_status = shipment.get("status", "")
         request_data = shipment.get("request_data", {})
@@ -88,24 +88,16 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
 
             await push_message_log(
                 request_id=request_id,
-                message=reminder_log,
+                message=reminder_log.model_dump(),
                 sent_message_id=reminder_msg_id,
                 status="PRICING_PENDING",
             )
 
-            return {
-                "success": True,
-                "message": "Pricing reminder sent to operator",
-                "status": "PRICING_PENDING",
-                "message_id": reminder_msg_id
-            }
+            return f"✅ Pricing reminder sent to operator | msg_id={reminder_msg_id} | status=PRICING_PENDING"
 
         # Handle non-QUOTED status
         if current_status != "QUOTED":
-            return {
-                "success": False,
-                "error": f"Cannot confirm shipment with status '{current_status}', expected 'QUOTED'"
-            }
+            return f"❌ Cannot confirm shipment with status '{current_status}', expected 'QUOTED'"
 
         # Process confirmation for QUOTED shipment
         
@@ -143,7 +135,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
 
         await push_message_log(
             request_id=request_id,
-            message=operator_message_log,
+            message=operator_message_log.model_dump(),
             sent_message_id=operator_msg_id,
             status="CONFIRMED",
         )
@@ -193,21 +185,15 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
 
         await push_message_log(
             request_id=request_id,
-            message=customer_message_log,
+            message=customer_message_log.model_dump(),
             sent_message_id=customer_msg_id,
             status="CONFIRMED",
         )
 
         logger.info(f"[confirmation_tools] Confirmation processed for {request_id}")
         
-        return {
-            "success": True,
-            "message": f"Shipment {request_id} confirmed successfully",
-            "status": "CONFIRMED",
-            "operator_message_id": operator_msg_id,
-            "customer_message_id": customer_msg_id
-        }
+        return f"✅ Confirmation email sent to {customer_email} | operator_msg_id={operator_msg_id} | customer_msg_id={customer_msg_id} | status=CONFIRMED"
 
     except Exception as e:
         logger.error(f"[confirmation_tools] Error processing confirmation: {e}")
-        return {"success": False, "error": str(e)}
+        return f"❌ Failed to process confirmation: {str(e)}"

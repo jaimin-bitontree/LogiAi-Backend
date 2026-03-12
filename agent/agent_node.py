@@ -42,7 +42,7 @@ TOOLS = [
 # Only 70B models support reliable tool calling
 # 8B models generate malformed tool calls with LangChain
 MODEL_FALLBACK = [
-    "llama-3.3-70b-versatile",   # Only reliable option
+    "openai/gpt-oss-120b",   # Only reliable option
 ]
 
 def get_llm_with_tools():

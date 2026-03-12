@@ -54,16 +54,22 @@ async def handle_spam_email(
         
         logger.info(f"[spam_tools] Spam rejection sent to {customer_email} | msg_id={sent_message_id}")
         
-        return {
-            "success" : True,
-            "message" : "Successfully handled spam mail",
-            "message_id": sent_message_id
-            
-        }
+        # Log to database (no request_id for spam emails)
+        message_log = Message(
+            message_id=sent_message_id,
+            sender_email=settings.GMAIL_ADDRESS,
+            sender_type="system",
+            direction="outgoing",
+            subject=out_subject,
+            body="Spam rejection email sent.",
+            received_at=datetime.utcnow(),
+        )
+        
+        # For spam emails, we don't have a request_id, so we'll skip push_message_log
+        # since it requires a request_id. Spam emails are standalone.
+        
+        return f"✅ Spam email handled | msg_id={sent_message_id}"
         
     except Exception as e:
         logger.error(f"[spam_tools] Error handling spam email: {e}")
-        return {
-        "success": False,
-        "error": str(e)
-    }
+        return f"❌ Failed to handle spam email: {str(e)}"

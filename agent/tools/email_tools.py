@@ -14,7 +14,7 @@ from datetime import datetime
 from langchain_core.tools import tool
 
 from config.settings import settings
-from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
+from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS, PACKAGE_TYPES, CONTAINER_TYPES, INCOTERMS, SHIPMENT_TYPES, TRANSPORT_MODES
 from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
@@ -49,6 +49,15 @@ async def send_missing_info_email(
     # Fetch extracted data from DB (saved by extraction tool)
     request_data = await get_request_data(request_id)
     all_fields   = REQUIRED_FIELDS + OPTIONAL_FIELDS
+    
+    # Create field options mapping from constants
+    field_options = {
+        "package_type": PACKAGE_TYPES,
+        "container_type": CONTAINER_TYPES,
+        "incoterm": INCOTERMS,
+        "shipment_type": SHIPMENT_TYPES,
+        "transport_mode": TRANSPORT_MODES
+    }
 
     html = build_email(
         email_type     = "missing_info",
@@ -56,6 +65,7 @@ async def send_missing_info_email(
         request_id     = request_id,
         request_data   = request_data,
         missing_fields = missing_fields,
+        field_options  = field_options,
         all_fields     = all_fields,
         next_steps     = [
             "Review the missing fields listed above",
@@ -83,7 +93,7 @@ async def send_missing_info_email(
 
     await push_message_log(
         request_id      = request_id,
-        message         = message_log,
+        message         = message_log.model_dump(),
         sent_message_id = sent_message_id,
         status          = "MISSING_INFO",
     )
@@ -211,13 +221,13 @@ async def send_complete_info_emails(
 
     await push_message_log(
         request_id      = request_id,
-        message         = customer_log,
+        message         = customer_log.model_dump(),
         sent_message_id = customer_msg_id,
         status          = "PRICING_PENDING",
     )
     await push_message_log(
         request_id      = request_id,
-        message         = operator_log,
+        message         = operator_log.model_dump(),
         sent_message_id = operator_msg_id,
         status          = "PRICING_PENDING",
     )

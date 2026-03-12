@@ -19,6 +19,7 @@ class Attachment(BaseModel):
     content_type: str
     url: Optional[str] = None
     content: Optional[bytes] = None
+    public_id: Optional[str] = None
 
 
 class Message(BaseModel):

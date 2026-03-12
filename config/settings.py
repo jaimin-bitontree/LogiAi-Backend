@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     OPERATOR_EMAIL:                str   = ""
     SYSTEM_EMAIL:                  str
 
+    CLOUDINARY_CLOUD_NAME:          str
+    CLOUDINARY_API_KEY:             str
+    CLOUDINARY_API_SECRET:          str
+
     API_BASE_URL:      str = "http://localhost:8000"
 
     class Config:

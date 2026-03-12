@@ -18,9 +18,25 @@ from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS, PACKAGE_TYPES, CO
 from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import push_message_log, get_request_data
+from services.shipment.shipment_service import push_message_log, get_request_data, get_shipment_by_request_id
+from services.ai.language_service import translate_to_language
 
 logger = logging.getLogger(__name__)
+
+
+def _get_detected_language(shipment_doc: dict) -> str:
+    """
+    Extract detected_language from shipment document's language_metadata.
+    Returns 'en' if not found or not set.
+    """
+    if not shipment_doc:
+        return "en"
+    lang_meta = shipment_doc.get("language_metadata", {})
+    if isinstance(lang_meta, dict):
+        return lang_meta.get("detected_language", "en") or "en"
+    elif hasattr(lang_meta, "detected_language"):
+        return lang_meta.detected_language or "en"
+    return "en"
 
 
 @tool
@@ -73,6 +89,14 @@ async def send_missing_info_email(
             "Once received, we will proceed with your quotation",
         ]
     )
+
+    # Translate reply to customer's language if needed 
+    shipment_doc  = await get_shipment_by_request_id(request_id)
+    detected_lang = _get_detected_language(shipment_doc)
+    if detected_lang != "en":
+        logger.info(f"[email_tools] Translating missing_info email to '{detected_lang}' for {customer_email}")
+        html = translate_to_language(html, detected_lang)
+
     email_subject   = f"Re: {subject} — Additional Information Required"
     sent_message_id = send_email(
         to         = customer_email,
@@ -98,7 +122,8 @@ async def send_missing_info_email(
         status          = "MISSING_INFO",
     )
 
-    logger.info("[email_tools] Missing info email sent | request_id=%s | msg_id=%s", request_id, sent_message_id)
+    logger.info("[email_tools] Missing info email sent | request_id=%s | msg_id=%s | lang=%s",
+                request_id, sent_message_id, detected_lang)
     return f"✅ Missing info email sent | msg_id={sent_message_id} | status=MISSING_INFO"
 
 
@@ -131,7 +156,11 @@ async def send_complete_info_emails(
     all_fields     = REQUIRED_FIELDS + OPTIONAL_FIELDS
     operator_email = settings.OPERATOR_EMAIL
 
-    # ── Customer confirmation email ────────────────────────────
+    # Get customer's language
+    shipment_doc  = await get_shipment_by_request_id(request_id)
+    detected_lang = _get_detected_language(shipment_doc)
+
+    # Customer confirmation email
     customer_html = build_email(
         email_type    = "status",
         customer_name = customer_name,
@@ -149,6 +178,12 @@ async def send_complete_info_emails(
             "You will receive our response shortly",
         ]
     )
+
+    # Translate customer email if needed
+    if detected_lang != "en":
+        logger.info(f"[email_tools] Translating complete_info email to '{detected_lang}' for {customer_email}")
+        customer_html = translate_to_language(customer_html, detected_lang)
+
     customer_subject = f"Re: {subject} — Request Received ✅"
     customer_msg_id  = send_email(
         to         = customer_email,
@@ -157,16 +192,15 @@ async def send_complete_info_emails(
         request_id = request_id,
     )
 
-    # ── Operator notification email ────────────────────────────
+    # Operator notification email (always English)
     logger.debug(f"OPERATOR_EMAIL from settings: '{operator_email}'")
     logger.info(f"[email_tools] Sending operator notification to: {operator_email}")
-    
+
     if not operator_email:
         error_msg = "OPERATOR_EMAIL not configured in settings"
         logger.error(f"[email_tools] {error_msg}")
-        logger.error(f"{error_msg}")
         return f"✅ Customer email sent | customer_msg_id={customer_msg_id} | ❌ Operator email failed: {error_msg}"
-    
+
     try:
         logger.debug(f"Building operator email template...")
         operator_html = build_email(
@@ -178,8 +212,7 @@ async def send_complete_info_emails(
         )
         operator_subject = f"New Shipment Request — {request_id}"
         logger.debug(f"Operator email template built successfully")
-        
-        logger.debug(f"Attempting to send operator email to: {operator_email}")
+
         logger.info(f"[email_tools] Attempting to send operator email...")
         operator_msg_id = send_email(
             to         = operator_email,
@@ -187,19 +220,13 @@ async def send_complete_info_emails(
             body_html  = operator_html,
             request_id = request_id,
         )
-        logger.debug(f"Operator email sent successfully: {operator_msg_id}")
         logger.info(f"[email_tools] Operator email sent successfully: {operator_msg_id}")
     except Exception as e:
         error_msg = f"Failed to send operator email: {e}"
         logger.error(f"[email_tools] {error_msg}")
-        logger.error(f"[email_tools] Operator email details - to: {operator_email}, subject: {operator_subject}")
-        logger.error(f"{error_msg}")
-        logger.error(f"Exception type: {type(e).__name__}")
-        logger.error(f"Exception details: {str(e)}")
-        # Continue with customer email only
         return f"✅ Customer email sent | customer_msg_id={customer_msg_id} | ❌ Operator email failed: {e}"
 
-    # ── Log both to DB ─────────────────────────────────────────
+    # Log both to DB
     customer_log = Message(
         message_id   = customer_msg_id,
         sender_email = settings.GMAIL_ADDRESS,
@@ -232,8 +259,8 @@ async def send_complete_info_emails(
         status          = "PRICING_PENDING",
     )
 
-    logger.info("[email_tools] Complete emails sent | request_id=%s | customer=%s | operator=%s",
-                request_id, customer_msg_id, operator_msg_id)
+    logger.info("[email_tools] Complete emails sent | request_id=%s | customer=%s | operator=%s | lang=%s",
+                request_id, customer_msg_id, operator_msg_id, detected_lang)
     return (
         f"✅ Both emails sent | "
         f"customer_msg_id={customer_msg_id} | "

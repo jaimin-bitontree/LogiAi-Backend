@@ -7,14 +7,12 @@ logger = logging.getLogger(__name__)
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 
-
-
 def detect_language(text: str) -> tuple[str, float]:
     """Detect language using langdetect with LLM fallback."""
     try:
-        results    = detect_langs(text)
-        top        = results[0]
-        lang       = str(top.lang)
+        results = detect_langs(text)
+        top = results[0]
+        lang = str(top.lang)
         confidence = float(top.prob)
     except LangDetectException:
         return "en", 0.0
@@ -73,3 +71,44 @@ def translate_with_llm(text: str) -> str:
     except Exception as e:
         logger.error(f"LLM translation failed: {e}")
         return text   # return original if translation fails
+
+
+def translate_to_language(text: str, target_lang: str) -> str:
+    """
+    Translate text from English to target language.
+    Used to translate reply emails back to customer's language.
+
+    Args:
+        text: English text to translate (can be HTML)
+        target_lang: ISO 639-1 language code (e.g. 'fr', 'de', 'hi', 'ar')
+
+    Returns:
+        Translated text in target language. Returns original if translation fails.
+    """
+    if not target_lang or target_lang == "en":
+        return text
+    try:
+        response = client.chat.completions.create(
+            model=settings.LANGUAGE_TRANSLATE_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are a professional translator. "
+                        f"Translate the given text to the language with ISO 639-1 code: '{target_lang}'. "
+                        f"Preserve all HTML tags, formatting, and structure exactly. "
+                        f"Only translate the visible text content inside HTML tags. "
+                        f"Do NOT translate HTML tag names, attributes, or CSS. "
+                        f"Return only the translated result, nothing else."
+                    )
+                },
+                {"role": "user", "content": text[:4000]}
+            ],
+            temperature=0
+        )
+        translated = response.choices[0].message.content.strip()
+        logger.info(f"[language_service] Translated reply to '{target_lang}' ({len(translated)} chars)")
+        return translated
+    except Exception as e:
+        logger.error(f"[language_service] Translation to '{target_lang}' failed: {e} — using original")
+        return text  # return original if translation fails

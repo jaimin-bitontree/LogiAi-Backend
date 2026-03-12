@@ -83,7 +83,7 @@ async def send_missing_info_email(
 
     await push_message_log(
         request_id      = request_id,
-        message         = message_log.model_dump(),
+        message         = message_log,
         sent_message_id = sent_message_id,
         status          = "MISSING_INFO",
     )
@@ -211,13 +211,13 @@ async def send_complete_info_emails(
 
     await push_message_log(
         request_id      = request_id,
-        message         = customer_log.model_dump(),
+        message         = customer_log,
         sent_message_id = customer_msg_id,
         status          = "PRICING_PENDING",
     )
     await push_message_log(
         request_id      = request_id,
-        message         = operator_log.model_dump(),
+        message         = operator_log,
         sent_message_id = operator_msg_id,
         status          = "PRICING_PENDING",
     )

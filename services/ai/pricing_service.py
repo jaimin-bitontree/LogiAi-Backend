@@ -18,6 +18,38 @@ CRITICAL RULES:
 2. Currency codes must be 3-letter strings (USD, EUR, GBP, etc.)
 3. If a field is not found, use null (not empty string)
 4. Extract ALL charges mentioned in the email
+5. IMPORTANT: Look for patterns like "Amount: 210" and "Currency: EUR" - extract the values after the colon
+
+CHARGE EXTRACTION PATTERNS:
+- "Description: Ocean Freight Hamburg → Mumbai" → description: "Ocean Freight Hamburg → Mumbai"
+- "Amount: 210" → amount: "210" (extract number after "Amount:")
+- "Currency: EUR" → currency: "EUR" (extract code after "Currency:")
+- "Rate: 1385" → rate: "1385" (extract number after "Rate:")
+- "Basis: Per Container" → basis: "Per Container" (extract text after "Basis:")
+
+SECTION PATTERNS TO LOOK FOR:
+- "Main Freight Charges" section
+- "Origin Charges" section  
+- "Destination Charges" section
+- "Additional Charges" section
+- "Payment Terms" section
+- "Shipment Details" section
+
+COMMON EMAIL FORMATS:
+Format 1 (Line-by-line):
+Description: Origin Terminal Handling Charge (THC)
+Amount: 210
+Currency: EUR
+
+Format 2 (Inline):
+Ocean Freight: USD 1,680
+
+Format 3 (Mixed):
+Description: BAF (Bunker Adjustment Factor)
+Rate: 165
+Basis: Per Container
+Amount: 165
+Currency: USD
 
 JSON Schema Structure:
 {
@@ -28,7 +60,7 @@ JSON Schema Structure:
   "pricing_type": "string or null - FCL/LCL/AIR",
   "shipment_details": {
     "pol": "string or null - Port of Loading",
-    "pod": "string or null - Port of Discharge",
+    "pod": "string or null - Port of Discharge", 
     "cargo_type": "string or null - Type of cargo",
     "container_type": "string or null - e.g. 20' GP, 40' HC",
     "weight_dimensions": "string or null - Weight and dimensions",
@@ -42,17 +74,17 @@ JSON Schema Structure:
       "description": "string - Charge name",
       "rate": "string or null - Rate as STRING",
       "basis": "string or null - Per container, per kg, etc.",
-      "amount": "string - Amount as STRING (REQUIRED)",
-      "currency": "string - 3-letter code (REQUIRED)"
+      "amount": "string - Amount as STRING (REQUIRED - never null)",
+      "currency": "string - 3-letter code (REQUIRED - never null)"
     }
   ],
   "origin_charges": [
     {
       "description": "string",
       "rate": "string or null",
-      "basis": "string or null",
-      "amount": "string - Amount as STRING",
-      "currency": "string"
+      "basis": "string or null", 
+      "amount": "string - Amount as STRING (REQUIRED - never null)",
+      "currency": "string - 3-letter code (REQUIRED - never null)"
     }
   ],
   "destination_charges": [
@@ -60,32 +92,39 @@ JSON Schema Structure:
       "description": "string",
       "rate": "string or null",
       "basis": "string or null",
-      "amount": "string - Amount as STRING",
-      "currency": "string"
+      "amount": "string - Amount as STRING (REQUIRED - never null)",
+      "currency": "string - 3-letter code (REQUIRED - never null)"
     }
   ],
   "additional_charges": [
     {
       "description": "string",
-      "rate": "string or null",
+      "rate": "string or null", 
       "basis": "string or null",
-      "amount": "string - Amount as STRING",
-      "currency": "string"
+      "amount": "string - Amount as STRING (REQUIRED - never null)",
+      "currency": "string - 3-letter code (REQUIRED - never null)"
     }
   ],
   "payment_terms": {
     "validity": "string or null - Quote validity period",
-    "conditions": "string or null - Payment conditions",
+    "conditions": "string or null - Payment conditions", 
     "payment_method": "string or null - Payment method"
   },
   "calculation_notes": "string or null - Any additional notes",
   "closing": "string or null - Closing remarks"
 }
 
-EXAMPLES:
-- If email says "Ocean Freight: USD 1,680" → {"description": "Ocean Freight", "amount": "1680", "currency": "USD"}
-- If email says "Weight: 18,200 kg" → {"chargeable_weight": "18200"}
-- If email says "Volume: 32 CBM" → {"volume": "32"}
+EXTRACTION EXAMPLES:
+Input: "Description: Origin Terminal Handling Charge (THC)\nAmount: 210\nCurrency: EUR"
+Output: {"description": "Origin Terminal Handling Charge (THC)", "amount": "210", "currency": "EUR"}
+
+Input: "Description: BAF (Bunker Adjustment Factor)\nRate: 165\nBasis: Per Container\nAmount: 165\nCurrency: USD"
+Output: {"description": "BAF (Bunker Adjustment Factor)", "rate": "165", "basis": "Per Container", "amount": "165", "currency": "USD"}
+
+Input: "Ocean Freight Hamburg → Mumbai: USD 1,385"
+Output: {"description": "Ocean Freight Hamburg → Mumbai", "amount": "1385", "currency": "USD"}
+
+CRITICAL: Never return null for "amount" or "currency" fields in charge items. Always extract these values as strings.
 
 Respond ONLY with valid JSON matching the schema above.
 """

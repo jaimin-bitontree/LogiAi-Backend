@@ -6,7 +6,7 @@ from config.constants import EmailIntent
 from models.shipment import IntentResult
 
 logger = logging.getLogger(__name__)
-client = Groq(api_key=settings.GROQ_API_KEY)
+client = Groq(api_key=settings.GROQ_API_KEY_2)
 
 # ===================================================
 # SYSTEM PROMPT

@@ -56,7 +56,7 @@ def merge_pricing_data(existing_pricing: PricingSchema, new_pricing: PricingSche
 
 
 @tool
-async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -> dict:
+async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -> str:
     """Calculate pricing from operator email and send quote to customer.
     
     Args:
@@ -64,7 +64,7 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
         pricing_email_body: Email body containing pricing information from operator
         
     Returns:
-        Result with status and details
+        Confirmation string with sent message ID
     """
     try:
         logger.info(f"[pricing_tools] Processing pricing for {request_id}")
@@ -150,7 +150,7 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
         # 7. Update database
         await push_message_log(
             request_id=request_id,
-            message=outgoing_msg,
+            message=outgoing_msg.model_dump(),
             sent_message_id=outgoing_message_id,
             status="QUOTED"
         )
@@ -163,13 +163,8 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
 
         logger.info(f"[pricing_tools] Quote sent for {request_id} to {customer_email}")
         
-        return {
-            "success": True,
-            "message": f"Pricing quote sent to {customer_email}",
-            "pricing_data": pricing_data.model_dump(),
-            "message_id": outgoing_message_id
-        }
+        return f"✅ Pricing quote sent to {customer_email} | msg_id={outgoing_message_id} | status=QUOTED"
 
     except Exception as e:
         logger.error(f"[pricing_tools] Error processing pricing: {e}")
-        return {"success": False, "error": str(e)}
+        return f"❌ Failed to send pricing quote: {str(e)}"

@@ -16,6 +16,22 @@ from html import escape
 from typing import Literal, List, Optional
 from models.shipment import PricingSchema
 
+from config.constants import (
+    PACKAGE_TYPES,
+    CONTAINER_TYPES,
+    INCOTERMS,
+    SHIPMENT_TYPES,
+    TRANSPORT_MODES
+)
+
+# Create a mapping of field names to their available options
+FIELD_OPTIONS = {
+    "package_type": PACKAGE_TYPES,
+    "container_type": CONTAINER_TYPES,
+    "incoterm": INCOTERMS,
+    "shipment_type": SHIPMENT_TYPES,
+    "transport_mode": TRANSPORT_MODES
+}
 
 # ─────────────────────────────────────────────────────────────
 # SECTION BUILDERS  (private)
@@ -98,7 +114,7 @@ def _section_extracted_data(request_data: dict, all_fields: List[str]) -> str:
     return "".join(html_blocks)
 
 
-def _section_missing_fields(missing_fields: List[str]) -> str:
+def _section_missing_fields(missing_fields: List[str],field_options: dict = None) -> str:
     """
     Only shown in  missing_info  emails.
     Lists all required fields that are still missing.
@@ -113,6 +129,20 @@ def _section_missing_fields(missing_fields: List[str]) -> str:
         f'</li>'
         for f in missing_fields
     )
+    # Build field recommendations section
+    recommendations_html = ""
+    if field_options:
+        recommendations_html = '<h3 style="color:#27ae60;margin-top:24px;">✓ Available Options</h3>'
+        recommendations_html += '<p style="color:#555;">Here are the available options for the missing fields:</p>'
+        recommendations_html += '<ul style="padding-left:20px;line-height:1.9;">'
+        
+        for field in missing_fields:
+            if field in field_options:
+                options = ", ".join(field_options[field])
+                field_label = field.replace("_", " ").title()
+                recommendations_html += f'<li style="margin-bottom:8px;"><strong>{escape(field_label)}:</strong> {escape(options)}</li>'
+        
+        recommendations_html += '</ul>'
 
     return f"""
     <h3 style="color:#e74c3c;margin-top:24px;">⚠️ Missing Information</h3>
@@ -124,9 +154,8 @@ def _section_missing_fields(missing_fields: List[str]) -> str:
       Please <strong>reply to this email</strong> with the missing details
       and we will continue processing your shipment immediately.
     </p>
+    {recommendations_html}
     """
-
-
 def _section_pricing(pricing: PricingSchema) -> str:
     """
     Shows a comprehensive pricing breakdown.
@@ -299,7 +328,7 @@ def build_email(
 
     # missing_info only
     missing_fields: Optional[List[str]] = None,
-
+    field_options: Optional[dict] = None,
     # pricing only (Uses PricingSchema object)
     pricing: Optional[PricingSchema] = None,
 
@@ -357,7 +386,7 @@ def build_email(
 
     # ── Assemble sections in type-specific order ──────────────
     if email_type == "missing_info":
-        body = data_section + _section_missing_fields(missing_fields or [])
+        body = data_section + _section_missing_fields(missing_fields or [], field_options)
 
     elif email_type == "pricing":
         body = _section_pricing(pricing) + data_section

@@ -53,7 +53,8 @@ class ToolNode:
                 "send_status_update",
                 "calculate_and_send_pricing",
                 "process_shipment_confirmation",
-                "cancel_shipment"
+                "cancel_shipment",
+                "handle_spam_email"
             ]
             
             if tool_name in email_sending_tools:
@@ -62,7 +63,18 @@ class ToolNode:
             if tool_name in self.tools:
                 try:
                     tool = self.tools[tool_name]
-                    result = await tool.ainvoke(tool_args)
+                    logger.info(f"[ToolNode] Executing tool: {tool_name} with args: {tool_args}")
+                    
+                    # Try ainvoke first, fall back to invoke if needed
+                    if hasattr(tool, 'ainvoke'):
+                        result = await tool.ainvoke(tool_args)
+                    elif hasattr(tool, 'invoke'):
+                        result = tool.invoke(tool_args)
+                    else:
+                        # Direct function call for async functions
+                        result = await tool(**tool_args)
+                    
+                    logger.info(f"[ToolNode] Tool {tool_name} result: {result}")
                     
                     from langchain_core.messages import ToolMessage
                     tool_message = ToolMessage(
@@ -76,12 +88,15 @@ class ToolNode:
                         logger.info(f"[ToolNode] Email tool '{tool_name}' executed successfully")
                         
                 except Exception as e:
+                    logger.error(f"[ToolNode] Error executing {tool_name}: {e}", exc_info=True)
                     from langchain_core.messages import ToolMessage
                     error_message = ToolMessage(
                         content=f"Error: {str(e)}",
                         tool_call_id=tool_id
                     )
                     tool_messages.append(error_message)
+            else:
+                logger.warning(f"[ToolNode] Tool {tool_name} not found in available tools")
         
         # Add a flag to state if email tool was executed
         result = {"messages": tool_messages}
@@ -132,16 +147,73 @@ builder.add_edge("context_builder", "agent")           # Hand off to agent loop
 
 # ── Agentic loop ──────────────────────────────────────────────
 def should_continue(state: AgentState) -> str:
-    """If LLM returned tool_calls → run tools. Otherwise → END."""
+    """If LLM returned tool_calls → run tools. Otherwise → END.
+    Also END if an email notification tool was just called."""
     messages = state["messages"]
     
     if not messages:
         return END
     
+    # Check if email tool was just executed (set by ToolNode)
+    if state.get("email_tool_executed", False):
+        logger.info(f"[workflow] Email tool executed flag detected, ending workflow")
+        return END
+    
     last_message = messages[-1]
+    
+    # Check if we just completed an email tool by looking at ToolMessage content
+    if hasattr(last_message, 'content') and hasattr(last_message, 'tool_call_id'):
+        content = str(last_message.content)
+        # Check for email tool completion indicators
+        email_indicators = [
+            "Email sent to",
+            "Both emails sent",
+            "Missing info email sent",
+            "Status update sent",
+            "Confirmation email sent",
+            "Cancellation email sent",
+            "Pricing quote sent",
+            "Spam email handled",
+            "✅ Pricing quote sent",
+            "✅ Status update sent", 
+            "✅ Confirmation email sent",
+            "✅ Cancellation email sent",
+            "✅ Spam email handled"
+        ]
+        
+        if any(indicator in content for indicator in email_indicators):
+            logger.info(f"[workflow] Email tool completed (detected from content), ending workflow")
+            return END
     
     # If agent wants to call more tools, continue
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        # Check if it's trying to call an email-sending tool that was recently called (prevent loops)
+        if len(messages) >= 3:  # Need at least: system, agent_call, tool_result
+            # Look for recent tool calls to prevent duplicates
+            recent_tool_calls = []
+            for msg in messages[-8:]:  # Check last 8 messages for tool calls
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    for tool_call in msg.tool_calls:
+                        recent_tool_calls.append(tool_call.get("name", ""))
+            
+            # Email-sending tools that should not be called repeatedly
+            email_sending_tools = [
+                "send_missing_info_email",
+                "send_complete_info_emails", 
+                "send_status_update",
+                "calculate_and_send_pricing",
+                "process_shipment_confirmation",
+                "cancel_shipment",
+                "handle_spam_email"
+            ]
+            
+            # If we're about to call an email-sending tool that was recently called, stop
+            for tool_call in last_message.tool_calls:
+                tool_name = tool_call.get("name", "")
+                if tool_name in email_sending_tools and recent_tool_calls.count(tool_name) >= 2:
+                    logger.warning(f"[workflow] Preventing duplicate email-sending tool call: {tool_name}")
+                    return END
+        
         return "tools"
     
     return END

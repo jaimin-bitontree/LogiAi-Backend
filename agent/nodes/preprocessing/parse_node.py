@@ -195,7 +195,7 @@ async def parser_node(state: AgentState) -> AgentState:
                     state["request_data"] = shipment.request_data
                     state["status"] = shipment.status
                     state["pricing_details"] = shipment.pricing_details
-                    state["messages"] = shipment.messages
+                    # state["messages"] = shipment.messages
                 else:
                     logger.warning(f"[parse_node] ❌ No shipment found for request_id: {request_id}")
         

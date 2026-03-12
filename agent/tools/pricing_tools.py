@@ -145,13 +145,12 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
             received_at=datetime.utcnow()
         )
 
-        # Convert to dict immediately to avoid LangGraph serialization issues
-        outgoing_msg_dict = outgoing_msg.model_dump()
+        
 
         # 7. Update database
         await push_message_log(
             request_id=request_id,
-            message=outgoing_msg_dict,
+            message=outgoing_msg,
             sent_message_id=outgoing_message_id,
             status="QUOTED"
         )

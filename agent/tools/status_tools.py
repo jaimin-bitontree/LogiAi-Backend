@@ -109,14 +109,13 @@ async def send_status_update(request_id: str, customer_email: str, last_message_
             received_at=datetime.utcnow()
         )
 
-        # Convert to dict immediately to avoid LangGraph serialization issues
-        outgoing_msg_dict = outgoing_msg.model_dump()
+        
 
         # Update database
         await update_shipment_thread_id(
             request_id=shipment.request_id,
             new_thread_id=outgoing_message_id,
-            new_message=outgoing_msg_dict
+            new_message=outgoing_msg
         )
 
         logger.info(f"[status_tools] Status update sent for {shipment.request_id}")

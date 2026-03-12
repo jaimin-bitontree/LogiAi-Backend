@@ -88,7 +88,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
 
             await push_message_log(
                 request_id=request_id,
-                message=reminder_log.model_dump(),
+                message=reminder_log,
                 sent_message_id=reminder_msg_id,
                 status="PRICING_PENDING",
             )
@@ -143,7 +143,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
 
         await push_message_log(
             request_id=request_id,
-            message=operator_message_log.model_dump(),
+            message=operator_message_log,
             sent_message_id=operator_msg_id,
             status="CONFIRMED",
         )
@@ -193,7 +193,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str) ->
 
         await push_message_log(
             request_id=request_id,
-            message=customer_message_log.model_dump(),
+            message=customer_message_log,
             sent_message_id=customer_msg_id,
             status="CONFIRMED",
         )

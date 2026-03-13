@@ -46,7 +46,7 @@ def append_excel_text_to_body(body: str, excel_filename: str, excel_text: str) -
     return body
 
 
-# langgraph node
+
 
 
 
@@ -113,8 +113,12 @@ async def parser_node(state: AgentState) -> AgentState:
                         "pdf_text": pdf_text,
                     })
                     logger.info(f"[parse_node] Extracted {len(pdf_text)} chars from {att.filename}")
-                
-                # Upload PDF to Cloudinary
+            except Exception as e:
+                logger.error(f"[parse_node] PDF extraction failed: {att.filename} — {e}")
+                updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a digital PDF]"
+            
+            # Upload PDF to Cloudinary (separate error handling)
+            try:
                 logger.info(f"[parse_node] Uploading PDF to Cloudinary: {att.filename}")
                 cloudinary_result = await upload_pdf_to_cloudinary(att.content, att.filename)
                 if cloudinary_result:
@@ -123,10 +127,12 @@ async def parser_node(state: AgentState) -> AgentState:
                     logger.info(f"[parse_node] PDF uploaded to Cloudinary | public_id={att.public_id}")
                 else:
                     logger.warning(f"[parse_node] Failed to upload PDF to Cloudinary: {att.filename}")
-                    
+                    att.public_id = "upload_failed"
+                    att.url = None
             except Exception as e:
-                logger.error(f"[parse_node] PDF extraction failed: {att.filename} — {e}")
-                updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a digital PDF]"
+                logger.error(f"[parse_node] Cloudinary upload exception for {att.filename}: {e}")
+                att.public_id = "upload_error"
+                att.url = None
 
         elif is_excel:
             try:
@@ -142,21 +148,26 @@ async def parser_node(state: AgentState) -> AgentState:
                         "excel_text": excel_text,
                     })
                     logger.info(f"[parse_node] Extracted {len(excel_text)} chars from {att.filename}")
-                
-                # Upload Excel to Cloudinary
+            except Exception as e:
+                logger.error(f"[parse_node] Excel extraction failed: {att.filename} — {e}")
+                updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a valid Excel file]"
+            
+            # Upload Excel to Cloudinary (separate error handling)
+            try:
                 logger.info(f"[parse_node] Uploading Excel to Cloudinary: {att.filename}")
                 cloudinary_result = await upload_excel_to_cloudinary(att.content, att.filename)
                 if cloudinary_result:
                     att.public_id = cloudinary_result["public_id"]
                     att.url = cloudinary_result["url"]
-                    
                     logger.info(f"[parse_node] Excel uploaded to Cloudinary | public_id={att.public_id}")
                 else:
                     logger.warning(f"[parse_node] Failed to upload Excel to Cloudinary: {att.filename}")
-                    
+                    att.public_id = "upload_failed"
+                    att.url = None
             except Exception as e:
-                logger.error(f"[parse_node] Excel extraction failed: {att.filename} — {e}")
-                updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a valid Excel file]"
+                logger.error(f"[parse_node] Cloudinary upload exception for {att.filename}: {e}")
+                att.public_id = "upload_error"
+                att.url = None
 
     message_ids = state.get("message_ids")
     if not isinstance(message_ids, list):

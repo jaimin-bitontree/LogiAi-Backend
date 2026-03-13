@@ -127,3 +127,10 @@ CONTAINER_TYPES = [
     "45' GP",
     "45' High Cube",
 ]
+
+
+# ===============================
+# RTL LANGUAGES
+# ===============================
+
+RTL_LANGUAGES = {"ar", "he", "ur", "fa"}

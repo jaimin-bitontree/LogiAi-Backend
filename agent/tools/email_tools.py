@@ -82,12 +82,14 @@ async def send_missing_info_email(
     )
 
     # ── Translate body + subject if needed ───────────────────────
+    additional_info_msg = "Additional Information Required"
     if detected_lang != "en":
         logger.info(f"[email_tools] Translating missing_info email to '{detected_lang}' for {customer_email}")
-        html    = translate_to_language(html, detected_lang)
-        subject = translate_to_language(subject, detected_lang)
+        html                = translate_to_language(html, detected_lang)
+        subject             = translate_to_language(subject, detected_lang)
+        additional_info_msg = translate_to_language(additional_info_msg, detected_lang)
 
-    email_subject   = f"Re: {subject} — Additional Information Required"
+    email_subject   = f"Re: {subject} — {additional_info_msg}"
     sent_message_id = send_email(
         to         = customer_email,
         subject    = email_subject,

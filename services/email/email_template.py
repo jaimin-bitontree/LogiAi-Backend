@@ -21,7 +21,8 @@ from config.constants import (
     CONTAINER_TYPES,
     INCOTERMS,
     SHIPMENT_TYPES,
-    TRANSPORT_MODES
+    TRANSPORT_MODES,
+    RTL_LANGUAGES,
 )
 
 # Create a mapping of field names to their available options
@@ -316,9 +317,6 @@ def _section_spam_rejection() -> str:
 # ─────────────────────────────────────────────────────────────
 
 from models.shipment import PricingSchema
-
-# Languages that read right to left
-RTL_LANGUAGES = {"ar", "he", "ur", "fa"}
 
 def build_email(
     email_type:    Literal["missing_info", "pricing", "status", "spam"],

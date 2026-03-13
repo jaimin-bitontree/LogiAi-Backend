@@ -56,6 +56,14 @@ class ExtractionSchema(BaseModel):
     # ===============================
     # ENUM VALIDATORS
     # ===============================
+    @field_validator("customer_street_number", "origin_street_number", "destination_street_number", 
+                     "customer_zip_code", "origin_zip_code", "destination_zip_code")
+    @classmethod
+    def convert_to_string(cls, v):
+        if v is not None:
+            return str(v)
+        return v
+
     @field_validator("incoterm")
     @classmethod
     def validate_incoterm(cls, v):

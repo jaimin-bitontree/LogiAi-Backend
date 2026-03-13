@@ -386,7 +386,16 @@ def build_email(
 
     # ── Assemble sections in type-specific order ──────────────
     if email_type == "missing_info":
-        body = data_section + _section_missing_fields(missing_fields or [], field_options)
+        # If custom message provided, use it instead of missing fields section
+        if message:
+            custom_message_section = f"""
+            <div style="margin-top:20px;margin-bottom:20px;">
+                <p style="color:#555;font-size:15px;line-height:1.6;">{escape(message)}</p>
+            </div>
+            """
+            body = data_section + custom_message_section
+        else:
+            body = data_section + _section_missing_fields(missing_fields or [], field_options)
 
     elif email_type == "pricing":
         body = _section_pricing(pricing) + data_section

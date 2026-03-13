@@ -189,13 +189,26 @@ async def parser_node(state: AgentState) -> AgentState:
                 shipment_found = True
                 request_id = shipment.request_id
                 
-                # Hydrate state with shipment data
-                state["request_id"] = shipment.request_id
-                state["customer_email"] = shipment.customer_email  # Override with actual customer
-                state["request_data"] = shipment.request_data
-                state["status"] = shipment.status
-                state["pricing_details"] = shipment.pricing_details
-                # Note: Don't copy shipment.messages to state["messages"] - LangChain messages are handled separately
+               
+        
+                # Update state and return early
+                state.update({
+                        "message_ids": message_ids,
+                        "last_message_id": message_id,
+                        "request_id":shipment.request_id,
+                        "customer_email":shipment.customer_email,
+                        "request_data":shipment.request_data,
+                        "status":shipment.status,
+                        "pricing_details":shipment.pricing_details,
+                        "is_operator": is_operator,
+                        "shipment_found": shipment_found,
+                        "subject": subject,
+                        "body": updated_body,
+                        "translated_subject": subject,      
+                        "translated_body": updated_body,   
+                        "attachments": attachments,
+                    })
+                return state
         
         # Strategy 2: Extract request_id from subject line (separate email)
         if not shipment_found:
@@ -213,13 +226,25 @@ async def parser_node(state: AgentState) -> AgentState:
                     logger.info(f"[parse_node] ✅ Found shipment by request_id: {request_id}")
                     shipment_found = True
                     
-                    # Hydrate state with shipment data
-                    state["request_id"] = shipment.request_id
-                    state["customer_email"] = shipment.customer_email
-                    state["request_data"] = shipment.request_data
-                    state["status"] = shipment.status
-                    state["pricing_details"] = shipment.pricing_details
-                    # state["messages"] = shipment.messages
+                    
+                    # Update state and return early
+                    state.update({
+                        "message_ids": message_ids,
+                        "last_message_id": message_id,
+                        "request_id":shipment.request_id,
+                        "customer_email":shipment.customer_email,
+                        "request_data":shipment.request_data,
+                        "status":shipment.status,
+                        "pricing_details":shipment.pricing_details,
+                        "is_operator": is_operator,
+                        "shipment_found": shipment_found,
+                        "subject": subject,
+                        "body": updated_body,
+                        "translated_subject": subject,      
+                        "translated_body": updated_body,   
+                        "attachments": attachments,
+                    })
+                    return state
                 else:
                     logger.warning(f"[parse_node] ❌ No shipment found for request_id: {request_id}")
         
@@ -239,13 +264,25 @@ async def parser_node(state: AgentState) -> AgentState:
                     logger.info(f"[parse_node] ✅ Found shipment by request_id: {request_id}")
                     shipment_found = True
                     
-                    # Hydrate state with shipment data
-                    state["request_id"] = shipment.request_id
-                    state["customer_email"] = shipment.customer_email
-                    state["request_data"] = shipment.request_data
-                    state["status"] = shipment.status
-                    state["pricing_details"] = shipment.pricing_details
-                    # state["messages"] = shipment.messages
+                    
+                    # Update state and return early
+                    state.update({
+                        "message_ids": message_ids,
+                        "last_message_id": message_id,
+                        "request_id":shipment.request_id,
+                        "customer_email":shipment.customer_email,
+                        "request_data":shipment.request_data,
+                        "status":shipment.status,
+                        "pricing_details":shipment.pricing_details,
+                        "is_operator": is_operator,
+                        "shipment_found": shipment_found,
+                        "subject": subject,
+                        "body": updated_body,
+                        "translated_subject": subject,      
+                        "translated_body": updated_body,   
+                        "attachments": attachments,
+                    })
+                    return state
                 else:
                     logger.warning(f"[parse_node] ❌ No shipment found for request_id: {request_id}")
             else:

@@ -41,7 +41,13 @@ Classify the given email into exactly ONE of these intents:
                            if the PDF content has origin + destination → it is new_request
 
 3. status_inquiry - Sender is asking about the status of an existing shipment/order.
-                   Keywords: "status", "update", "where is my shipment", "tracking"
+                   Keywords: "status", "update", "where is my shipment", "tracking", "what is the status",
+                   "can you check", "shipment status", "order status", "current status", "progress",
+                   "delivery status", "check status", "any updates", "when will it arrive"
+                   Examples: "What is the status of my shipment?", "Can you check the status?",
+                   "Where is my order?", "Any updates on my shipment?", "When will it be delivered?"
+                   IMPORTANT: If email asks about status of an existing shipment → classify as status_inquiry
+                   IMPORTANT: Status inquiry does NOT need to include request_id in the email itself
 
 4. confirmation - Sender is confirming a previously discussed shipment or booking.
                  Keywords: "confirm", "accept", "proceed", "book", "yes please go ahead", "accepted", "approve"

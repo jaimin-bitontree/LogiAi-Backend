@@ -126,11 +126,17 @@ builder.add_edge("language",        "intent")
 
 # ── Conditional routing after intent ──────────────────────────
 def route_after_intent(state: AgentState) -> str:
-    """Route based on intent: spam goes directly to context_builder, others go to reqid"""
+    """Route based on intent: spam, status_inquiry, and operator_pricing skip reqid, others go to reqid"""
     intent = state.get("intent", "")
     
     if intent == "spam":
         logger.info("[workflow] Spam detected - routing directly to context_builder (skipping reqid)")
+        return "context_builder"
+    elif intent == "status_inquiry":
+        logger.info("[workflow] Status inquiry detected - routing directly to context_builder (skipping reqid)")
+        return "context_builder"
+    elif intent == "operator_pricing":
+        logger.info("[workflow] Operator pricing detected - routing directly to context_builder (skipping reqid)")
         return "context_builder"
     else:
         return "reqid"

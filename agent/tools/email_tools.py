@@ -51,6 +51,11 @@ async def send_missing_info_email(
     request_data = await get_request_data(request_id)
     all_fields   = REQUIRED_FIELDS + OPTIONAL_FIELDS
 
+    # ── Get detected language from DB ────────────────────────────
+    shipment_doc  = await get_shipment_by_request_id(request_id)
+    lang_meta     = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
+    detected_lang = (lang_meta.get("detected_language") or "en") if isinstance(lang_meta, dict) else "en"
+
     # Create field options mapping from constants
     field_options = {
         "package_type":   PACKAGE_TYPES,
@@ -68,17 +73,13 @@ async def send_missing_info_email(
         missing_fields = missing_fields,
         field_options  = field_options,
         all_fields     = all_fields,
+        lang           = detected_lang,
         next_steps     = [
             "Review the missing fields listed above",
             "Reply directly to this email with the required information",
             "Once received, we will proceed with your quotation",
         ]
     )
-
-    # ── Get detected language from DB ────────────────────────────
-    shipment_doc  = await get_shipment_by_request_id(request_id)
-    lang_meta     = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
-    detected_lang = (lang_meta.get("detected_language") or "en") if isinstance(lang_meta, dict) else "en"
 
     # ── Translate body + subject if needed ───────────────────────
     if detected_lang != "en":
@@ -158,6 +159,7 @@ async def send_complete_info_emails(
         request_data  = request_data,
         all_fields    = all_fields,
         status        = "PRICING_PENDING",
+        lang          = detected_lang,
         message       = (
             "We have received all the information needed for your shipment request. "
             "Our team is reviewing the details and you will receive a quotation shortly."

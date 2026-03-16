@@ -21,7 +21,8 @@ from config.constants import (
     CONTAINER_TYPES,
     INCOTERMS,
     SHIPMENT_TYPES,
-    TRANSPORT_MODES
+    TRANSPORT_MODES,
+    RTL_LANGUAGES,
 )
 
 # Create a mapping of field names to their available options
@@ -342,6 +343,9 @@ def build_email(
     # spam only
     customer_email: Optional[str] = None,
     subject: Optional[str] = None,
+
+    # Language for RTL support
+    lang: Optional[str] = "en",
 ) -> str:
     """
     Build a full HTML email body for any outgoing LogiAI email.
@@ -407,8 +411,13 @@ def build_email(
         body = data_section
 
     # ── Wrap in base HTML layout ──────────────────────────────
-    safe_name = escape(customer_name or "Customer")
-    safe_id   = escape(request_id)
+    safe_name   = escape(customer_name or "Customer")
+    safe_id     = escape(request_id)
+
+    # RTL support for Arabic, Hebrew, Urdu, Persian
+    is_rtl      = (lang or "en") in RTL_LANGUAGES
+    dir_attr    = 'dir="rtl"' if is_rtl else ''
+    align_style = "text-align:right;" if is_rtl else ""
 
     # Operator specific instruction block
     operator_instruction = ""
@@ -449,10 +458,10 @@ def build_email(
 
     return f"""
     <html>
-    <body style="font-family:Arial,sans-serif;color:#333;
+    <body {dir_attr} style="font-family:Arial,sans-serif;color:#333;{align_style}
                  max-width:660px;margin:auto;padding:28px;background-color:#f9f9f9;">
 
-      <div style="background:#fff;border:1px solid #ddd;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+      <div {dir_attr} style="background:#fff;border:1px solid #ddd;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
         
         <!-- Header -->
         <div style="padding:32px 24px 20px;text-align:center;">

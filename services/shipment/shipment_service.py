@@ -316,7 +316,8 @@ async def get_shipment_by_request_id(request_id: str) -> Optional[dict]:
                 "status":              1,
                 "customer_email":      1,
                 "last_message_id":     1,
-                "_id":                 0,   # never return _id
+                "_id":                 0, 
+                "language_metadata":   1,  
             }
         )
 

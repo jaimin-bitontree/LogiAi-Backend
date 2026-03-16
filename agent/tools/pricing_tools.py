@@ -13,6 +13,7 @@ from config.settings import settings
 from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message, PricingSchema
 from services.ai.pricing_service import extract_pricing_data
+from services.ai.language_service import translate_to_language, translate_text_to_language
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
 from services.shipment.shipment_service import push_message_log, get_shipment_by_request_id, set_pricing_details
@@ -34,20 +35,16 @@ def merge_pricing_data(existing_pricing: PricingSchema, new_pricing: PricingSche
     """
     logger.debug(f"[merge_pricing_data] Merging pricing data")
     
-    # Convert to dicts for easier manipulation
     existing_dict = existing_pricing.model_dump()
     new_dict = new_pricing.model_dump()
     
     merged_dict = {}
     
-    # Merge all fields
     for field, new_value in new_dict.items():
-        # If new value exists (not None, not empty string, not empty list)
         if new_value is not None and new_value != "" and new_value != []:
             merged_dict[field] = new_value
             logger.debug(f"  {field}: using new value")
         else:
-            # Keep existing value
             merged_dict[field] = existing_dict.get(field)
             logger.debug(f"  {field}: keeping existing value")
     
@@ -96,35 +93,45 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
         logger.debug(f"Shipment found: {shipment_doc.get('customer_email')}")
 
         customer_email = shipment_doc["customer_email"]
-        request_data = shipment_doc.get("request_data", {})
-        customer_name = (
+        request_data   = shipment_doc.get("request_data", {})
+        customer_name  = (
             request_data.get("required", {}).get("customer_name") or
             request_data.get("customer_name") or
             customer_email
         )
 
-        # 3. Build quote email
+        # ── Get detected language from DB ────────────────────────────
+        lang_meta     = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
+        detected_lang = (lang_meta.get("detected_language") or "en") if isinstance(lang_meta, dict) else "en"
+
+        # 3. Build quote email (always in English first)
         all_fields = REQUIRED_FIELDS + OPTIONAL_FIELDS
         email_body = build_email(
-            email_type="pricing",
-            customer_name=customer_name,
-            request_id=request_id,
-            pricing=pricing_data,
-            request_data=request_data,
-            all_fields=all_fields
+            email_type    = "pricing",
+            customer_name = customer_name,
+            request_id    = request_id,
+            pricing       = pricing_data,
+            request_data  = request_data,
+            all_fields    = all_fields,
+            lang          = detected_lang,
         )
 
-        # 4. Send email to customer
+        # 4. Translate email body + subject if needed
         out_subject = f"LogiAI Quotation — {request_id}: {pricing_data.transport_mode or ''}"
-        
+        if detected_lang != "en":
+            logger.info(f"[pricing_tools] Translating pricing email to '{detected_lang}' for {customer_email}")
+            email_body  = translate_to_language(email_body, detected_lang)
+            out_subject = translate_text_to_language(out_subject, detected_lang)
+
+        # 5. Send email to customer
         outgoing_message_id = send_email(
-            to=customer_email,
-            subject=out_subject,
-            body_html=email_body,
-            request_id=request_id
+            to         = customer_email,
+            subject    = out_subject,
+            body_html  = email_body,
+            request_id = request_id
         )
 
-        # 5. Check for existing pricing and merge if needed
+        # 6. Check for existing pricing and merge if needed
         existing_pricing_list = shipment_doc.get("pricing_details", [])
         if existing_pricing_list:
             logger.debug(f"Found existing pricing, merging with new pricing")
@@ -134,34 +141,31 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
         else:
             logger.debug(f"No existing pricing, using new pricing as-is")
 
-        # 6. Log interaction
+        # 7. Log interaction
         outgoing_msg = Message(
-            message_id=outgoing_message_id,
-            sender_email=settings.GMAIL_ADDRESS,
-            sender_type="system",
-            direction="outgoing",
-            subject=out_subject,
-            body=f"Quotation sent to customer. Transport Mode: {pricing_data.transport_mode}",
-            received_at=datetime.utcnow()
+            message_id   = outgoing_message_id,
+            sender_email = settings.GMAIL_ADDRESS,
+            sender_type  = "system",
+            direction    = "outgoing",
+            subject      = out_subject,
+            body         = f"Quotation sent to customer. Transport Mode: {pricing_data.transport_mode}",
+            received_at  = datetime.utcnow()
         )
 
-        
-
-        # 7. Update database
+        # 8. Update database
         await push_message_log(
-            request_id=request_id,
-            message=outgoing_msg.model_dump(),
-            sent_message_id=outgoing_message_id,
-            status="QUOTED"
+            request_id      = request_id,
+            message         = outgoing_msg.model_dump(),
+            sent_message_id = outgoing_message_id,
+            status          = "QUOTED"
         )
         
-        # Save pricing details using service layer (replace, not append)
         await set_pricing_details(
-            request_id=request_id,
-            pricing_data=pricing_data.model_dump()
+            request_id   = request_id,
+            pricing_data = pricing_data.model_dump()
         )
 
-        logger.info(f"[pricing_tools] Quote sent for {request_id} to {customer_email}")
+        logger.info(f"[pricing_tools] Quote sent for {request_id} to {customer_email} | lang={detected_lang}")
         
         return f"✅ Pricing quote sent to {customer_email} | msg_id={outgoing_message_id} | status=QUOTED"
 

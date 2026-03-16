@@ -96,7 +96,10 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
                 {
                     "role": "system",
                     "content": (
+                        f"You are a professional translator specializing in natural, fluent translations. "
                         f"Translate the following text to the language with ISO 639-1 code: '{target_lang}'. "
+                        f"Use natural, grammatically correct phrasing — do NOT translate word by word. "
+                        f"Write as a native speaker would — use proper grammar and culturally appropriate tone. "
                         f"Return ONLY the translated text. "
                         f"No HTML, no explanation, no preamble, nothing else."
                     )
@@ -186,12 +189,15 @@ def translate_to_language(text: str, target_lang: str) -> str:
                     {
                         "role": "system",
                         "content": (
-                            f"You are a strict HTML translator. "
+                            f"You are a professional translator specializing in natural, fluent translations. "
                             f"Translate the given HTML to the language with ISO 639-1 code: '{target_lang}'. "
+                            f"Use natural, grammatically correct phrasing — do NOT translate word by word. "
+                            f"Write as a native speaker would — use proper grammar, natural sentence structure, and culturally appropriate tone. "
                             f"ONLY translate visible text — do NOT add, remove, or generate any new content. "
                             f"Do NOT invent new sections, tables, rows, or data that do not exist in the input. "
                             f"Do NOT change numeric values, dates, IDs, email addresses, or Request IDs. "
-                            f"Preserve ALL HTML tags, attributes, CSS styles, and structure exactly as-is. "
+                            f"Preserve ALL HTML tags, attributes, and structure exactly as-is. "
+                            f"Do NOT modify, remove, or alter any CSS style attributes — preserve padding, margin, color, font-weight, width, border, and all other style values exactly as-is. "
                             f"Only translate the visible human-readable text inside HTML tags. "
                             f"Do NOT add any explanation, preamble, or commentary before or after the HTML. "
                             f"Return ONLY the translated HTML, nothing else."

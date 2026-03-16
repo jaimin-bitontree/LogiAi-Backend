@@ -13,6 +13,10 @@ Usage:
 """
 
 from html import escape
+from typing import Optional, List
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import Literal, List, Optional
 from models.shipment import PricingSchema
 
@@ -311,6 +315,47 @@ def _section_spam_rejection() -> str:
     """
 
 
+def _section_notification_reminder() -> str:
+    """Generate notification reminder section."""
+    return """
+    <div style="background:#e8f4fd;border:1px solid #bee3f8;border-radius:6px;padding:20px;margin-bottom:20px;">
+        <h3 style="color:#2b6cb0;margin-top:0;margin-bottom:12px;font-size:18px;">
+            🔔 Quote Reminder
+        </h3>
+        <p style="color:#2c5282;margin:0;font-size:15px;line-height:1.6;">
+            This is a friendly reminder that your quote is ready for review. 
+            Please find the complete pricing details below and let us know if you have any questions or would like to proceed.
+        </p>
+    </div>
+    """
+
+
+def _section_pricing_details(pricing_details: Optional[List] = None) -> str:
+    """Generate pricing details section for notifications."""
+    if not pricing_details:
+        return ""
+    
+    pricing_html = ""
+    for pricing in pricing_details:
+        # Convert dict to PricingSchema object if needed
+        if isinstance(pricing, dict):
+            from models.shipment import PricingSchema
+            try:
+                pricing_obj = PricingSchema(**pricing)
+                pricing_html += _section_pricing(pricing_obj)
+            except Exception as e:
+                logger.warning(f"Failed to convert pricing dict to PricingSchema: {e}")
+                continue
+        elif hasattr(pricing, 'model_dump'):
+            # Already a Pydantic object
+            pricing_html += _section_pricing(pricing)
+        else:
+            # Unknown format, skip
+            continue
+    
+    return pricing_html
+
+
 # ─────────────────────────────────────────────────────────────
 # PUBLIC API
 # ─────────────────────────────────────────────────────────────
@@ -318,7 +363,7 @@ def _section_spam_rejection() -> str:
 from models.shipment import PricingSchema
 
 def build_email(
-    email_type:    Literal["missing_info", "pricing", "status", "spam"],
+    email_type:    Literal["missing_info", "pricing", "status", "spam", "notification"],
     customer_name: str = "",
     request_id:    str = "",
 
@@ -331,6 +376,9 @@ def build_email(
     field_options: Optional[dict] = None,
     # pricing only (Uses PricingSchema object)
     pricing: Optional[PricingSchema] = None,
+    
+    # notification only
+    pricing_details: Optional[List] = None,
 
     # status only
     status:  Optional[str] = None,
@@ -402,6 +450,9 @@ def build_email(
 
     elif email_type == "status":
         body = _section_status(status or "", message) + data_section
+    
+    elif email_type == "notification":
+        body = _section_notification_reminder() + _section_pricing_details(pricing_details) + data_section
 
     else:
         body = data_section

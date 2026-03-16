@@ -24,6 +24,8 @@ async def verify_cancellation_eligibility(
         }
 
     # Status check
+    if shipment.status == "CONFIRMED":
+        return {"eligible": False, "error": f"Shipment {request_id} is already confirmed."}
     if shipment.status == "CANCELLED":
         return {"eligible": False, "error": f"Shipment {request_id} is already cancelled."}
     

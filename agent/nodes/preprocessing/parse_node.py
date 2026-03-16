@@ -244,7 +244,7 @@ async def parser_node(state: AgentState) -> AgentState:
                 await push_message_log(
                     request_id=shipment.request_id,
                     message=operator_message.model_dump(),
-                    sent_message_id=None,  # No sent message for incoming
+                    sent_message_id=message_id,  # No sent message for incoming
                     status=shipment.status,
                 )
 

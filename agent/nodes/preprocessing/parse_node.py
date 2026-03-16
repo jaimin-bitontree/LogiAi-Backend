@@ -237,7 +237,8 @@ async def parser_node(state: AgentState) -> AgentState:
                     sender_type="operator",
                     direction="incoming",
                     subject=subject,
-                    body=updated_body,  # Includes PDF text content
+                    body=updated_body,
+                    attachments=attachments, # Includes PDF text content
                     received_at=datetime.utcnow()
                 )
 

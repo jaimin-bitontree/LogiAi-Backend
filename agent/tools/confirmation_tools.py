@@ -14,8 +14,9 @@ from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment, push_message_log
+from services.shipment.shipment_service import update_shipment, push_message_log,find_by_request_id
 from db.client import get_db
+
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +83,8 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             return f"✅ Request ID required email sent to {customer_email} | msg_id={msg_id} | status=REQUEST_ID_NEEDED"
 
         # Fetch shipment from DB
-        db = get_db()
-        shipment = await db.shipments.find_one({"request_id": request_id})
+        # db = get_db()
+        shipment = await find_by_request_id({"request_id": request_id})
 
         if not shipment:
             logger.warning(f"[confirmation_tools] Shipment {request_id} not found")

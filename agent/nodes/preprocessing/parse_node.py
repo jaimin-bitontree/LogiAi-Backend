@@ -14,6 +14,12 @@ from config.settings import settings
 from langchain.tools import tool
 import re
 import logging
+from models.shipment import Message
+from services.shipment.shipment_service import push_message_log
+from datetime import datetime
+
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +106,22 @@ async def parser_node(state: AgentState) -> AgentState:
         )
 
         if is_pdf:
+            # Get content from raw_attachments, not att.content
+            raw_content = None
+            for raw_att in raw_attachments:
+                if raw_att["filename"] == att.filename:
+                    raw_content = raw_att["content"]
+                    break
+            
+            # Validate raw content exists
+            if not raw_content:
+                logger.error(f"[parse_node] No raw content found for PDF: {att.filename}")
+                raise ValueError(f"PDF attachment {att.filename} has no content data")
+            
+            # First try block for PDF text extraction
             try:
                 logger.info(f"[parse_node] Extracting PDF: {att.filename}")
-                pdf_text = extract_text_from_pdf(att.content)
+                pdf_text = extract_text_from_pdf(raw_content)
                 if not pdf_text:
                     logger.warning(f"[parse_node] No text extracted from {att.filename} — may be scanned or image-based PDF")
                     updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a digital PDF]"
@@ -117,27 +136,40 @@ async def parser_node(state: AgentState) -> AgentState:
                 logger.error(f"[parse_node] PDF extraction failed: {att.filename} — {e}")
                 updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a digital PDF]"
             
-            # Upload PDF to Cloudinary (separate error handling)
+            # Second try block for Cloudinary upload
             try:
                 logger.info(f"[parse_node] Uploading PDF to Cloudinary: {att.filename}")
-                cloudinary_result = await upload_pdf_to_cloudinary(att.content, att.filename)
+                cloudinary_result = await upload_pdf_to_cloudinary(raw_content, att.filename)
                 if cloudinary_result:
                     att.public_id = cloudinary_result["public_id"]
                     att.url = cloudinary_result["url"]
                     logger.info(f"[parse_node] PDF uploaded to Cloudinary | public_id={att.public_id}")
                 else:
-                    logger.warning(f"[parse_node] Failed to upload PDF to Cloudinary: {att.filename}")
-                    att.public_id = "upload_failed"
-                    att.url = None
+                    logger.error(f"[parse_node] Cloudinary upload failed for {att.filename}")
+                    raise RuntimeError(f"Failed to upload PDF {att.filename} to Cloudinary")
             except Exception as e:
                 logger.error(f"[parse_node] Cloudinary upload exception for {att.filename}: {e}")
                 att.public_id = "upload_error"
                 att.url = None
+                raise e
 
         elif is_excel:
+            # Get content from raw_attachments, not att.content
+            raw_content = None
+            for raw_att in raw_attachments:
+                if raw_att["filename"] == att.filename:
+                    raw_content = raw_att["content"]
+                    break
+            
+            # Validate raw content exists
+            if not raw_content:
+                logger.error(f"[parse_node] No raw content found for Excel: {att.filename}")
+                raise ValueError(f"Excel attachment {att.filename} has no content data")
+            
+            # First try block for Excel text extraction
             try:
                 logger.info(f"[parse_node] Extracting Excel: {att.filename}")
-                excel_text = extract_text_from_excel(att.content)
+                excel_text = extract_text_from_excel(raw_content)
                 if not excel_text:
                     logger.warning(f"[parse_node] No text extracted from {att.filename} — file may be empty")
                     updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a valid Excel file]"
@@ -152,27 +184,27 @@ async def parser_node(state: AgentState) -> AgentState:
                 logger.error(f"[parse_node] Excel extraction failed: {att.filename} — {e}")
                 updated_body += f"\n\n[WARNING: Could not read {att.filename} — please resend as a valid Excel file]"
             
-            # Upload Excel to Cloudinary (separate error handling)
+            # Second try block for Cloudinary upload
             try:
                 logger.info(f"[parse_node] Uploading Excel to Cloudinary: {att.filename}")
-                cloudinary_result = await upload_excel_to_cloudinary(att.content, att.filename)
+                cloudinary_result = await upload_excel_to_cloudinary(raw_content, att.filename)
                 if cloudinary_result:
                     att.public_id = cloudinary_result["public_id"]
                     att.url = cloudinary_result["url"]
                     logger.info(f"[parse_node] Excel uploaded to Cloudinary | public_id={att.public_id}")
                 else:
-                    logger.warning(f"[parse_node] Failed to upload Excel to Cloudinary: {att.filename}")
-                    att.public_id = "upload_failed"
-                    att.url = None
+                    logger.error(f"[parse_node] Cloudinary upload failed for {att.filename}")
+                    raise RuntimeError(f"Failed to upload Excel {att.filename} to Cloudinary")
             except Exception as e:
                 logger.error(f"[parse_node] Cloudinary upload exception for {att.filename}: {e}")
                 att.public_id = "upload_error"
                 att.url = None
+                raise e
 
     message_ids = state.get("message_ids")
     if not isinstance(message_ids, list):
         message_ids = []
-
+    
     if message_id and message_id not in message_ids:
         message_ids.append(message_id)
         logger.debug(f"Message IDs: {message_ids}")
@@ -199,7 +231,25 @@ async def parser_node(state: AgentState) -> AgentState:
                 logger.info(f"[parse_node] ✅ Matched request_id: {shipment.request_id}")
                 shipment_found = True
                 request_id = shipment.request_id
-                
+                operator_message = Message(
+                    message_id=message_id,
+                    sender_email=customer_email,  # This is operator email
+                    sender_type="operator",
+                    direction="incoming",
+                    subject=subject,
+                    body=updated_body,
+                    attachments=attachments, # Includes PDF text content
+                    received_at=datetime.utcnow()
+                )
+
+                await push_message_log(
+                    request_id=shipment.request_id,
+                    message=operator_message.model_dump(),
+                    sent_message_id=message_id,  # No sent message for incoming
+                    status=shipment.status,
+                )
+
+                logger.info(f"[parse_node] Operator email logged | request_id={shipment.request_id} | msg_id={message_id}")
                
         
                 # Update state and return early

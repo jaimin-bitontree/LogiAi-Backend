@@ -138,6 +138,9 @@ def route_after_intent(state: AgentState) -> str:
     elif intent == "operator_pricing":
         logger.info("[workflow] Operator pricing detected - routing directly to context_builder (skipping reqid)")
         return "context_builder"
+    elif intent == "confirmation":
+        logger.info("[workflow] confirmation detected- routing directly to context_builder (skipping reqid)")
+        return "context_builder"
     else:
         return "reqid"
 

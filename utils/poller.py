@@ -30,7 +30,8 @@ async def job():
         for raw in raw_emails:
 
             try:
-                result = await run_workflow(raw)
+                # result = await run_workflow(raw)
+                result = asyncio.create_task(run_workflow(raw))
                 if result:
                     logger.info(f"✅ Processed: {result.get('subject')}")
                 else:

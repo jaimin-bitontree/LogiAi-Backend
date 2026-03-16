@@ -19,7 +19,13 @@ CRITICAL RULES:
 3. If a field is not found, use null (not empty string)
 4. Extract ALL charges mentioned in the email
 5. IMPORTANT: Look for patterns like "Amount: 210" and "Currency: EUR" - extract the values after the colon
-
+  - ALL charge arrays must be empty lists [] if no charges found, NEVER null/None
+- "main_freight_charges": [] (if no main charges found)
+- "origin_charges": [] (if no origin charges found)  
+- "destination_charges": [] (if no destination charges found)
+- "additional_charges": [] (if no additional charges found)
+- "shipment_details": {} (if no details found)
+- "payment_terms": {} (if no terms found)
 CHARGE EXTRACTION PATTERNS:
 - "Description: Ocean Freight Hamburg → Mumbai" → description: "Ocean Freight Hamburg → Mumbai"
 - "Amount: 210" → amount: "210" (extract number after "Amount:")
@@ -132,7 +138,6 @@ Respond ONLY with valid JSON matching the schema above.
 def extract_pricing_data(email_body: str) -> tuple[Optional[PricingSchema], Optional[str]]:
     """
     Calls Groq LLM to extract structured pricing details and request_id from raw text.
-    
     Returns:
         tuple: (PricingSchema or None, request_id or None)
         

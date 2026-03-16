@@ -21,12 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-async def send_status_update(request_id: str, customer_email: str, last_message_id: str = None) -> str:
+async def send_status_update(request_id: str, customer_email: str, customer_name: str = "Customer", last_message_id: str = None) -> str:
     """Send shipment status update to customer.
     
     Args:
-        request_id: The shipment request ID (optional, can be None for lookup)
+        request_id: The shipment request ID (can be empty/null if not provided)
         customer_email: Customer email address
+        customer_name: Customer name for personalization
         last_message_id: Last message ID for conversation lookup
         
     Returns:
@@ -35,6 +36,52 @@ async def send_status_update(request_id: str, customer_email: str, last_message_
     try:
         logger.info(f"[status_tools] Processing status inquiry for {customer_email}")
 
+        # Check if request_id is missing or invalid
+        if not request_id or request_id.lower() in ["null", "none", "", "unknown"]:
+            logger.warning(f"[status_tools] No request ID provided by {customer_email}")
+            
+            # Send email asking for request ID
+            request_id_email_html = build_email(
+                email_type="missing_info",
+                customer_name=customer_name,
+                request_id="UNKNOWN",
+                missing_fields=["request_id"],
+                message=(
+                    "We received your status inquiry, but we need your Request ID "
+                    "to check your shipment status. Please reply with your Request ID "
+                    "(format: REQ-YYYY-XXXXXXXXXXXX) that was provided in your original emails."
+                ),
+                next_steps=[
+                    "Check your previous emails from LogiAI for your Request ID",
+                    "Reply to this email with your Request ID",
+                    "If you can't find it, forward your original shipment email to us"
+                ]
+            )
+            
+            subject = "Request ID Required for Status Inquiry"
+            
+            msg_id = send_email(
+                to=customer_email,
+                subject=subject,
+                body_html=request_id_email_html,
+                request_id="UNKNOWN"
+            )
+            
+            request_id_message_log = Message(
+                message_id=msg_id,
+                sender_email=settings.GMAIL_ADDRESS,
+                sender_type="system",
+                direction="outgoing",
+                subject=subject,
+                body="Request ID required email sent for status inquiry.",
+                received_at=datetime.utcnow()
+            )
+
+            logger.info(f"[status_tools] Request ID needed email sent to {customer_email}")
+            
+            return f"✅ Request ID required email sent to {customer_email} | msg_id={msg_id} | status=REQUEST_ID_NEEDED"
+
+        # Continue with normal status lookup using provided request_id
         status_result = await get_shipment_status_context(
             customer_email=customer_email,
             request_id=request_id,
@@ -42,61 +89,68 @@ async def send_status_update(request_id: str, customer_email: str, last_message_
         )
 
         if not status_result["found"]:
-            error_msg = status_result.get("error", "Shipment not found or unauthorized.")
-            logger.warning(f"[status_tools] {error_msg} for {customer_email}")
+            logger.warning(f"[status_tools] Shipment {request_id} not found for {customer_email}")
             
-            # Send error email
-            email_body = build_email(
-                email_type="status",
-                customer_name=customer_email,
-                request_id=request_id or "N/A",
-                status="NOT_FOUND",
-                message=f"{error_msg} If you want to know status please give me real request id."
+            # Enhanced error message with guidance
+            guidance_html = build_email(
+                email_type="missing_info",
+                customer_name=customer_name,
+                request_id=request_id,
+                missing_fields=[],
+                message=(
+                    f"We couldn't find a shipment with Request ID: {request_id}. "
+                    "Please check your Request ID and try again."
+                ),
+                next_steps=[
+                    "Verify the Request ID format (REQ-YYYY-XXXXXXXXXXXX)",
+                    "Check your previous emails from LogiAI",
+                    "Contact our support team if you need assistance"
+                ]
             )
-
-            subject = "Shipment Status Inquiry - Not Found"
-            outgoing_message_id = send_email(
+            
+            error_subject = f"Shipment Not Found - {request_id}"
+            error_msg_id = send_email(
                 to=customer_email,
-                subject=subject,
-                body_html=email_body,
-                request_id=request_id or ""
+                subject=error_subject,
+                body_html=guidance_html,
+                request_id=request_id
             )
             
-            # Log error email to database if we have a request_id
-            if request_id:
-                error_message_log = Message(
-                    message_id=outgoing_message_id,
-                    sender_email=settings.GMAIL_ADDRESS,
-                    sender_type="system",
-                    direction="outgoing",
-                    subject=subject,
-                    body=f"Status inquiry error: {error_msg}",
-                    received_at=datetime.utcnow(),
-                )
-                
-                await push_message_log(
-                    request_id=request_id,
-                    message=error_message_log.model_dump(),
-                    sent_message_id=outgoing_message_id,
-                    status="NOT_FOUND",
-                )
+            # Log error email to database
+            error_message_log = Message(
+                message_id=error_msg_id,
+                sender_email=settings.GMAIL_ADDRESS,
+                sender_type="system",
+                direction="outgoing",
+                subject=error_subject,
+                body=f"Status inquiry error: Shipment not found",
+                received_at=datetime.utcnow(),
+            )
+            
+            await push_message_log(
+                request_id=request_id,
+                message=error_message_log.model_dump(),
+                sent_message_id=error_msg_id,
+                status="NOT_FOUND",
+            )
 
-            return f"❌ Status update failed: {error_msg} | msg_id={outgoing_message_id}"
+            return f"❌ Shipment {request_id} not found | guidance_email_sent | msg_id={error_msg_id}"
 
+        # Shipment found - proceed with normal status update
         shipment = status_result["shipment"]
         
-        # Extract customer name from request_data if available
-        customer_name = (
+        # Extract customer name from request_data if available, otherwise use provided name
+        extracted_customer_name = (
             shipment.request_data.get("required", {}).get("customer_name") or
             shipment.request_data.get("customer_name") or
-            customer_email
+            customer_name
         )
 
         # Prepare status email
         all_fields = REQUIRED_FIELDS + OPTIONAL_FIELDS
         email_body = build_email(
             email_type="status",
-            customer_name=customer_name,
+            customer_name=extracted_customer_name,
             request_id=shipment.request_id,
             request_data=shipment.request_data,
             all_fields=all_fields,
@@ -105,7 +159,7 @@ async def send_status_update(request_id: str, customer_email: str, last_message_
         )
 
         # Send status email
-        subject = "Shipment Status Update"
+        subject = f"Shipment Status Update - {shipment.request_id}"
         outgoing_message_id = send_email(
             to=customer_email,
             subject=subject,
@@ -123,8 +177,6 @@ async def send_status_update(request_id: str, customer_email: str, last_message_
             body="Automated status update reply.",
             received_at=datetime.utcnow()
         )
-
-        
 
         # Update database
         await update_shipment_thread_id(

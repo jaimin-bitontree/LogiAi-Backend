@@ -40,6 +40,87 @@ async def extract_shipment_fields(request_id: str) -> dict:
     Saves extracted data and validation result to database automatically.
 
     Call this first for any new_request intent.
+    CRITICAL DATA TYPE RULES:
+    - STRING fields: Always use quotes "value"
+    - INTEGER fields: Use numbers without quotes 123
+    - FLOAT fields: Use decimal numbers 123.45
+    - BOOLEAN fields: Use true/false (no quotes)
+    - NULL values: Use null (not "null" or None)
+
+    REQUIRED FIELDS (STRING - always in quotes):
+    - customer_name: "Alpine Medical Supplies GmbH"
+    - customer_street_number: "5" ← STRING not number
+    - customer_zip_code: "80331" ← STRING not number
+    - customer_country: "Germany"
+    - origin_zip_code: "20457" ← STRING not number
+    - origin_city: "Hamburg"
+    - origin_country: "Germany"
+    - destination_zip_code: "2100" ← STRING not number
+    - destination_city: "Copenhagen"
+    - destination_country: "Denmark"
+    - incoterm: "DDP"
+    - package_type: "Package"
+    - container_type: "20' High Cube"
+    - transport_mode: "Road"
+    - shipment_type: "LCL"
+
+    REQUIRED FIELDS (NUMERIC - no quotes):
+    - quantity: 45 ← INTEGER
+    - cargo_weight: 2600.0 ← FLOAT
+    - volume: 14.0 ← FLOAT
+    - length: 1.2 ← FLOAT
+    - height: 1.5 ← FLOAT
+    - width: 1.0 ← FLOAT
+
+    OPTIONAL FIELDS (STRING - always in quotes):
+    - contact_person_name: "Laura Becker"
+    - contact_person_email: "laura.becker@alpinemedical.de"
+    - contact_person_phone: "+49 40 7788 2211"
+    - customer_reference: "AMS-PO-2291"
+    - origin_company: "Alpine Medical Warehouse"
+    - origin_street_number: "12" ← STRING not number
+    - destination_company: "Nordic Health Distribution"
+    - destination_street_number: "48" ← STRING not number
+    - description_of_goods: "Medical diagnostic equipment"
+    - additional_information: "Handle with care"
+    - temperature: "Ambient" (can be string or number)
+
+    OPTIONAL FIELDS (BOOLEAN - no quotes):
+    - stackable: true
+    - dangerous: false
+
+    CRITICAL EXAMPLES:
+    ✅ CORRECT:
+    {
+    "customer_street_number": "5",
+    "quantity": 45,
+    "cargo_weight": 2600.0,
+    "stackable": true
+    }
+
+    ❌ WRONG:
+    {
+    "customer_street_number": 5,
+    "quantity": "45",
+    "cargo_weight": "2600.0",
+    "stackable": "true"
+    }
+
+    FIELD MAPPING GUIDE:
+    - "Customer Street Number: 5" → "customer_street_number": "5"
+    - "Origin Street Number: 12" → "origin_street_number": "12"
+    - "Destination Street Number: 48" → "destination_street_number": "48"
+    - "Quantity: 45" → "quantity": 45
+    - "Cargo Weight: 2600.0" → "cargo_weight": 2600.0
+    - "Volume: 14 CBM" → "volume": 14.0
+    - "Stackable: Yes" → "stackable": true
+    - "Dangerous: No" → "dangerous": false
+
+    REMEMBER:
+    - Street numbers, zip codes, phone numbers = STRINGS (with quotes)
+    - Quantities, weights, dimensions = NUMBERS (no quotes)
+    - Yes/No, True/False = BOOLEANS (true/false)
+    - Missing information = null
 
     Args:
         request_id: The specific shipment REQ-ID to process.

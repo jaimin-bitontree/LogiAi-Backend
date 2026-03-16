@@ -15,7 +15,6 @@ from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
 from services.shipment.shipment_service import update_shipment, push_message_log,find_by_request_id
-from db.client import get_db
 
 
 logger = logging.getLogger(__name__)
@@ -84,7 +83,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
 
         # Fetch shipment from DB
         # db = get_db()
-        shipment = await find_by_request_id({"request_id": request_id})
+        shipment = await find_by_request_id(request_id)
 
         if not shipment:
             logger.warning(f"[confirmation_tools] Shipment {request_id} not found")
@@ -116,19 +115,22 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             
             return f"❌ Shipment {request_id} not found | guidance_email_sent | msg_id={error_msg_id}"
 
-        current_status = shipment.get("status", "")
-        request_data = shipment.get("request_data", {})
-        subject = shipment.get("subject") or "Your Shipment"
+        current_status = shipment.status
+        request_data = shipment.request_data
+        subject = shipment.subject or "Your Shipment"
 
         logger.info(f"[confirmation_tools] Found shipment | status={current_status}")
 
         operator_email = settings.OPERATOR_EMAIL
         all_fields = REQUIRED_FIELDS + OPTIONAL_FIELDS
-        customer_name = (
+        if isinstance(request_data, dict):
+            customer_name = (
             request_data.get("required", {}).get("customer_name") or
             request_data.get("customer_name") or
             "Customer"
-        )
+            )
+        else:
+            customer_name = "Customer"
 
         # Handle PRICING_PENDING status
         if current_status == "PRICING_PENDING":

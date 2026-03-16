@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-
+import os
 
 class Settings(BaseSettings):
     MONGODB_URI:        str
@@ -9,22 +9,22 @@ class Settings(BaseSettings):
     IMAP_GMAIL:        str
     IMAP_PORT:         int
     GROQ_API_KEY:                  str
-    GROQ_API_KEY_2:                str = ""  # Optional second API key
-    GROQ_API_KEY_3:                str = ""  # Optional third API key
-    LANGUAGE_CONFIDENCE_THRESHOLD: float = 0.85
-    LANGUAGE_DETECT_MODEL:         str   = "llama-3.1-8b-instant"
-    LANGUAGE_TRANSLATE_MODEL:      str   = "llama-3.1-8b-instant"
-    EXTRACTION_MODEL:              str   = "llama-3.1-8b-instant"
-    SMTP_HOST:                     str   = "smtp.gmail.com"
-    SMTP_PORT:                     int   = 587
-    OPERATOR_EMAIL:                str   = ""
+    GROQ_API_KEY_2:                str 
+    GROQ_API_KEY_3:                str 
+    LANGUAGE_CONFIDENCE_THRESHOLD: float 
+    LANGUAGE_DETECT_MODEL:         str   
+    LANGUAGE_TRANSLATE_MODEL:      str   
+    EXTRACTION_MODEL:              str   
+    SMTP_HOST:                     str   
+    SMTP_PORT:                     int   
+    OPERATOR_EMAIL:                str   
     SYSTEM_EMAIL:                  str
 
     CLOUDINARY_CLOUD_NAME:          str
     CLOUDINARY_API_KEY:             str
     CLOUDINARY_API_SECRET:          str
 
-    API_BASE_URL:      str = "http://localhost:8000"
+    API_BASE_URL:      str 
 
     class Config:
         env_file = ".env"

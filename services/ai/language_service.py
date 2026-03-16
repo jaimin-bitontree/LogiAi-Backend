@@ -71,7 +71,46 @@ def translate_with_llm(text: str) -> str:
         return response.choices[0].message.content.strip()
     except Exception as e:
         logger.error(f"LLM translation failed: {e}")
-        return text   # return original if translation fails
+        return text
+
+
+def translate_text_to_language(text: str, target_lang: str) -> str:
+    """
+    Translate plain text (not HTML) to target language.
+    Use this for subjects, short messages — NOT for HTML bodies.
+
+    Args:
+        text: Plain text to translate
+        target_lang: ISO 639-1 language code (e.g. 'fr', 'de', 'hi', 'ar')
+
+    Returns:
+        Translated plain text. Returns original if translation fails.
+    """
+    if not target_lang or target_lang == "en":
+        return text
+    try:
+        response = client.chat.completions.create(
+            model=settings.LANGUAGE_TRANSLATE_MODEL,
+            max_tokens=200,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"Translate the following text to the language with ISO 639-1 code: '{target_lang}'. "
+                        f"Return ONLY the translated text. "
+                        f"No HTML, no explanation, no preamble, nothing else."
+                    )
+                },
+                {"role": "user", "content": text}
+            ],
+            temperature=0
+        )
+        translated = response.choices[0].message.content.strip()
+        logger.info(f"[language_service] Text translated to '{target_lang}': {translated}")
+        return translated
+    except Exception as e:
+        logger.error(f"[language_service] Text translation failed: {e}")
+        return text
 
 
 def _split_html_into_chunks(text: str, chunk_size: int = 4000) -> list:
@@ -90,7 +129,6 @@ def _split_html_into_chunks(text: str, chunk_size: int = 4000) -> list:
         else:
             if current:
                 chunks.append(current)
-            # If a single part is larger than chunk_size, split it raw
             if len(part) > chunk_size:
                 for i in range(0, len(part), chunk_size):
                     chunks.append(part[i:i + chunk_size])
@@ -117,16 +155,19 @@ def _strip_llm_preamble(text: str) -> str:
 
 def translate_to_language(text: str, target_lang: str) -> str:
     """
-    Translate text from English to target language.
+    Translate HTML from English to target language.
     Splits HTML at safe </div> boundaries to avoid cutting mid-tag.
     Strips any LLM preamble sentences from each chunk.
 
+    Use this ONLY for HTML bodies — not for plain text.
+    For plain text (subjects, short messages), use translate_text_to_language().
+
     Args:
-        text: English text to translate (can be HTML)
+        text: English HTML to translate
         target_lang: ISO 639-1 language code (e.g. 'fr', 'de', 'hi', 'ar')
 
     Returns:
-        Translated text in target language. Returns original if translation fails.
+        Translated HTML in target language. Returns original if translation fails.
     """
     if not target_lang or target_lang == "en":
         return text
@@ -134,7 +175,7 @@ def translate_to_language(text: str, target_lang: str) -> str:
     chunks = _split_html_into_chunks(text, chunk_size=4000)
     translated_chunks = []
 
-    logger.info(f"[language_service] Translating to '{target_lang}' | {len(text)} chars | {len(chunks)} chunk(s)")
+    logger.info(f"[language_service] Translating HTML to '{target_lang}' | {len(text)} chars | {len(chunks)} chunk(s)")
 
     for i, chunk in enumerate(chunks):
         try:
@@ -161,10 +202,7 @@ def translate_to_language(text: str, target_lang: str) -> str:
                 temperature=0
             )
             translated_chunk = response.choices[0].message.content.strip()
-
-            # Strip any LLM preamble before the actual HTML
             translated_chunk = _strip_llm_preamble(translated_chunk)
-
             translated_chunks.append(translated_chunk)
             logger.info(f"[language_service] Chunk {i + 1}/{len(chunks)} done ({len(chunk)} → {len(translated_chunk)} chars)")
         except Exception as e:
@@ -172,5 +210,5 @@ def translate_to_language(text: str, target_lang: str) -> str:
             translated_chunks.append(chunk)
 
     translated = "".join(translated_chunks)
-    logger.info(f"[language_service] Translation complete → '{target_lang}' ({len(translated)} chars)")
+    logger.info(f"[language_service] HTML translation complete → '{target_lang}' ({len(translated)} chars)")
     return translated

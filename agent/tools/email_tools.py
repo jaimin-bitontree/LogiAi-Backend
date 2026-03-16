@@ -19,7 +19,7 @@ from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
 from services.shipment.shipment_service import push_message_log, get_request_data, get_shipment_by_request_id
-from services.ai.language_service import translate_to_language
+from services.ai.language_service import translate_to_language, translate_text_to_language
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +86,8 @@ async def send_missing_info_email(
     if detected_lang != "en":
         logger.info(f"[email_tools] Translating missing_info email to '{detected_lang}' for {customer_email}")
         html                = translate_to_language(html, detected_lang)
-        subject             = translate_to_language(subject, detected_lang)
-        additional_info_msg = translate_to_language(additional_info_msg, detected_lang)
+        subject             = translate_text_to_language(subject, detected_lang)
+        additional_info_msg = translate_text_to_language(additional_info_msg, detected_lang)
 
     email_subject   = f"Re: {subject} — {additional_info_msg}"
     sent_message_id = send_email(
@@ -178,7 +178,7 @@ async def send_complete_info_emails(
     if detected_lang != "en":
         logger.info(f"[email_tools] Translating complete_info email to '{detected_lang}' for {customer_email}")
         customer_html    = translate_to_language(customer_html, detected_lang)
-        customer_subject = translate_to_language(customer_subject, detected_lang)
+        customer_subject = translate_text_to_language(customer_subject, detected_lang)
 
     customer_msg_id = send_email(
         to         = customer_email,

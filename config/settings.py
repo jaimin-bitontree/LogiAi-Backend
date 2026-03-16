@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY:             str
     CLOUDINARY_API_SECRET:          str
 
-    API_BASE_URL:      str 
+    
 
     class Config:
         env_file = ".env"

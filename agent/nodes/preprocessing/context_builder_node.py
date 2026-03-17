@@ -27,6 +27,7 @@ def context_builder_node(state: AgentState) -> dict:
     subject = state.get("subject", "")
     body = state.get("translated_body", "")
     request_id = state.get("request_id", "")
+    conversation_id = state.get("conversation_id", "")
     request_data = state.get("request_data", {})
     validation = state.get("validation_result")
     

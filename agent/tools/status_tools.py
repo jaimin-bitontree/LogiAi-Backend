@@ -155,7 +155,7 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
             request_data=shipment.request_data,
             all_fields=all_fields,
             status=shipment.status,
-            message=f"I have checked our system, and your shipment {shipment.request_id} is currently in {shipment.status.replace('_', ' ')} status."
+            message=f"Thank you for your inquiry.Based on our latest system update, your shipment {shipment.request_id} is currently in {shipment.status.replace('_', ' ')} status."
         )
 
         # Send status email

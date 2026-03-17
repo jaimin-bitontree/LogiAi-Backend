@@ -141,7 +141,51 @@ builder.add_edge("language", "intent")
 def route_after_intent(state: AgentState) -> str:
     """Route based on intent: spam, status_inquiry, and operator_pricing skip reqid, others go to reqid"""
     intent = state.get("intent", "")
+    request_id = state.get("request_id", "")
+    conversation_id = state.get("conversation_id", "")
+    customer_email = state.get("customer_email", "")
     
+    # Check for all intents EXCEPT new_shipment_request
+    if intent != "new_request":
+        # Check if BOTH request_id AND conversation_id are null
+        request_id_missing = not request_id or request_id.lower() in ["null", "none", "", "unknown"]
+        conversation_id_missing = not conversation_id or conversation_id.lower() in ["null", "none", "", "unknown"]
+        
+        if request_id_missing and conversation_id_missing:
+            logger.warning(f"[workflow] Intent '{intent}' but no context (req_id + conversation_id both null)")
+            
+            # Send guidance email
+            from services.email.email_sender import send_email
+            from services.email.email_template import build_email
+            
+            guidance_html = build_email(
+                email_type="missing_info",
+                customer_name=customer_email,
+                request_id="UNKNOWN",
+                missing_fields=["request_id"],
+                message=(
+                    f"We received your {intent.replace('_', ' ')} request but couldn't match it to any shipment. "
+                    "Please reply to our previous email or include your Request ID (format: REQ-YYYY-XXXXXXXXXXXX)."
+                ),
+                next_steps=[
+                    "Reply to our previous email instead of creating a new one",
+                    "Or include your Request ID in your message",
+                    "Contact support if you need help"
+                ]
+            )
+            
+            msg_id = send_email(
+                to=customer_email,
+                subject="Request ID Required - Cannot Process Request",
+                body_html=guidance_html,
+                request_id="UNKNOWN"
+            )
+            
+            logger.info(f"[workflow] Context guidance sent | intent={intent} | msg_id={msg_id}")
+            
+            return END
+    
+    # Normal routing logic
     if intent == "spam":
         logger.info("[workflow] Spam detected - routing directly to context_builder (skipping reqid)")
         return "context_builder"

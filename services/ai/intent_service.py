@@ -98,6 +98,7 @@ Classify the given email into exactly ONE of these intents:
              - Malicious/phishing/marketing, OR
              - Completely off-topic with NO logistics intent whatsoever
           4. When in doubt between spam and missing_information → use missing_information
+          5. If email is confirmation of shipment -> NOT spam
           
           Examples of SPAM:
           - "Congratulations you won $1,000,000!"

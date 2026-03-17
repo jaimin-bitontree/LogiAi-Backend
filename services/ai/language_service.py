@@ -105,12 +105,18 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
                 {
                     "role": "system",
                     "content": (
-                        f"Translate the following text to ISO 639-1 language '{target_lang}'. "
-                        f"Output ONLY the translated text. "
-                        f"Do NOT ask questions. Do NOT explain. Do NOT add any commentary. "
-                        f"If the text is already in the target language, return it as-is. "
-                        f"Return the translation immediately with no preamble."
-                    )
+                       f"You are a professional human translator. "
+                       f"Your task: translate the user's text into the language identified by ISO 639-1 code '{target_lang}'. "
+                       f"\n\nRULES (follow strictly):"
+                       f"\n- Output ONLY the translated text — no introductions, explanations, notes, or metadata."
+                       f"\n- Preserve the original formatting, line breaks, punctuation, and structure exactly."
+                       f"\n- Preserve proper nouns, brand names, URLs, code snippets, and placeholders as-is (e.g. {{name}}, %s, <tag>)."
+                       f"\n- Match the tone and register of the source: formal stays formal, casual stays casual."
+                       f"\n- Never add, remove, or paraphrase content — translate meaning faithfully."
+                       f"\n- If a phrase has no direct equivalent, use the most natural culturally appropriate expression."
+                       f"\n- Do not transliterate — write in the native script of the target language."
+                       f"\n\nTranslate now."
+)
                 },
                 {"role": "user", "content": protected}
             ],

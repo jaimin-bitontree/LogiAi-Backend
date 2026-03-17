@@ -78,6 +78,12 @@ async def generate_reqid(state: AgentState) -> AgentState:
     if current_message_id:
         shipment = await _safe_lookup(find_by_any_message_id, current_message_id)
         if shipment:
+            # Check if shipment is already confirmed/completed
+            if shipment.status in ["CONFIRMED", "CANCELLED"]:
+                logger.error("Step 1 ERROR — Cannot update %s shipment (request_id: %s, status: %s)", 
+                           shipment.status, shipment.request_id, shipment.status)
+                raise ValueError(f"Shipment {shipment.request_id} is already {shipment.status}. Cannot process new requests on confirmed shipments. Please send a new email to create a new shipment request.")
+            
             logger.info("Step 1 HIT — message already processed (dedup): %s", current_message_id)
             return _hydrate_state(state, shipment)
 
@@ -85,6 +91,12 @@ async def generate_reqid(state: AgentState) -> AgentState:
     if conversation_id:
         shipment = await _safe_lookup(find_by_last_message_id, conversation_id)
         if shipment:
+            # Check if shipment is already confirmed/completed
+            if shipment.status in ["CONFIRMED",  "CANCELLED"]:
+                logger.error("Step 2 ERROR — Cannot update %s shipment (request_id: %s, status: %s)", 
+                           shipment.status, shipment.request_id, shipment.status)
+                raise ValueError(f"Shipment {shipment.request_id} is already {shipment.status}. Cannot process new requests on confirmed shipments. Please send a new email to create a new shipment request.")
+            
             logger.info("Step 2 HIT — matched by last_message_id (In-Reply-To): %s", conversation_id)
             await update_shipment_thread_id(
                 shipment.request_id, 
@@ -101,6 +113,12 @@ async def generate_reqid(state: AgentState) -> AgentState:
     if conversation_id:
         shipment = await _safe_lookup(find_by_any_message_id, conversation_id)
         if shipment:
+            # Check if shipment is already confirmed/completed
+            if shipment.status in ["CONFIRMED", "CANCELLED"]:
+                logger.error("Step 3 ERROR — Cannot update %s shipment (request_id: %s, status: %s)", 
+                           shipment.status, shipment.request_id, shipment.status)
+                raise ValueError(f"Shipment {shipment.request_id} is already {shipment.status}. Cannot process new requests on confirmed shipments. Please send a new email to create a new shipment request.")
+            
             logger.info("Step 3 HIT — matched message in conversation (message_ids): %s", conversation_id)
             await update_shipment_thread_id(
                 shipment.request_id, 
@@ -117,6 +135,12 @@ async def generate_reqid(state: AgentState) -> AgentState:
     if request_id:
         shipment = await _safe_lookup(find_by_request_id, request_id)
         if shipment:
+            # Check if shipment is already confirmed/completed
+            if shipment.status in ["CONFIRMED", "CANCELLED"]:
+                logger.error("Step 4 ERROR — Cannot update %s shipment (request_id: %s, status: %s)", 
+                           shipment.status, shipment.request_id, shipment.status)
+                raise ValueError(f"Shipment {shipment.request_id} is already {shipment.status}. Cannot process new requests on confirmed shipments. Please send a new email to create a new shipment request.")
+            
             logger.info("Step 4 HIT — matched by request_id: %s", request_id)
             await update_shipment_thread_id(
                 shipment.request_id, 
@@ -129,11 +153,19 @@ async def generate_reqid(state: AgentState) -> AgentState:
             )
             return _hydrate_state(state, shipment)
 
-    # ── Step 5: Lookup by email + open status ─────────────────────────────
-    if customer_email:
+    # ── Step 5: Lookup by email + open status (ONLY if replying to existing thread) ─────────────────────────────
+    # IMPORTANT: Only match if this is a REPLY (has In-Reply-To header)
+    # If it's a NEW email thread (no In-Reply-To), skip this and create a new shipment
+    if customer_email and conversation_id:
         shipment = await _safe_lookup(find_by_email_and_open_status, customer_email)
         if shipment:
-            logger.info("Step 5 HIT — matched by email %s with status %s", customer_email, shipment.status)
+            # Check if shipment is already confirmed/completed
+            if shipment.status in ["CONFIRMED", "CANCELLED"]:
+                logger.error("Step 5 ERROR — Cannot update %s shipment (request_id: %s, status: %s)", 
+                           shipment.status, shipment.request_id, shipment.status)
+                raise ValueError(f"Shipment {shipment.request_id} is already {shipment.status}. Cannot process new requests on confirmed shipments. Please send a new email to create a new shipment request.")
+            
+            logger.info("Step 5 HIT — matched by email %s with status %s (REPLY detected)", customer_email, shipment.status)
             await update_shipment_thread_id(
                 shipment.request_id, 
                 current_message_id, 
@@ -144,6 +176,8 @@ async def generate_reqid(state: AgentState) -> AgentState:
                 new_message=_build_message(state).model_dump()
             )
             return _hydrate_state(state, shipment)
+    elif customer_email and not conversation_id:
+        logger.info("Step 5 SKIPPED — new email thread detected (no In-Reply-To), will create new shipment")
 
     # ── Step 6: Generate fresh request_id and store new shipment ──────────
     new_id = generate_request_id()

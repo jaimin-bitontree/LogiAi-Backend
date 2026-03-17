@@ -129,8 +129,8 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             
             return f"❌ Shipment {request_id} not found | guidance_email_sent | msg_id={error_msg_id}"
 
-        current_status = shipment.status
-        request_data = shipment.request_data
+        current_status = shipment.status or ""
+        request_data = shipment.request_data or {}
         subject = shipment.subject or "Your Shipment"
 
         logger.info(f"[confirmation_tools] Found shipment | status={current_status}")

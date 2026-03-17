@@ -58,18 +58,18 @@ def detect_language_with_llm(text: str) -> tuple[str, float]:
 
 def translate_text_to_language(text: str, target_lang: str) -> str:
     """
-    Translate plain text (not HTML) to target language.
+    Translate plain text to target language (including English).
     Use this for subjects, short messages — NOT for HTML bodies.
     REQ-YYYY-XXXXXXXXXX IDs are preserved and never translated.
 
     Args:
         text: Plain text to translate
-        target_lang: ISO 639-1 language code (e.g. 'fr', 'de', 'hi', 'ar')
+        target_lang: ISO 639-1 language code (e.g. 'en', 'fr', 'de', 'hi', 'ar')
 
     Returns:
         Translated plain text. Returns original if translation fails.
     """
-    if not target_lang or target_lang == "en":
+    if not target_lang:
         return text
 
     protected, placeholders = protect_req_ids(text)
@@ -78,22 +78,25 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
         response = client.chat.completions.create(
             #model = genai.GenerativeModel(
             model=settings.LANGUAGE_TRANSLATE_MODEL,
-            max_tokens=300,
+            max_tokens=2000,
             messages=[
                 {
                     "role": "system",
                     "content": (
                        f"You are a professional human translator. "
-                       f"Your task: translate the user's text into the language identified by ISO 639-1 code '{target_lang}'. "
-                       f"\n\nRULES (follow strictly):"
-                       f"\n- Output ONLY the translated text — no introductions, explanations, notes, or metadata."
+                       f"Your task: translate ALL of the user's text into the language identified by ISO 639-1 code '{target_lang}'. "
+                       f"\n\nCRITICAL RULES:"
+                       f"\n- Translate EVERY SINGLE WORD and sentence to '{target_lang}' — leave NOTHING in the original language."
+                       f"\n- If the target language is 'en' (English), translate ALL text to English."
+                       f"\n- Output ONLY the fully translated text — no introductions, explanations, notes, or metadata."
                        f"\n- Preserve the original formatting, line breaks, punctuation, and structure exactly."
-                       f"\n- Preserve proper nouns, brand names, URLs, code snippets, and placeholders as-is (e.g. {{name}}, %s, <tag>)."
+                       f"\n- Preserve proper nouns (company names, person names), brand names, URLs, code snippets, and placeholders as-is."
+                       f"\n- Preserve numbers, dates, phone numbers, email addresses, and reference IDs exactly as-is."
                        f"\n- Match the tone and register of the source: formal stays formal, casual stays casual."
                        f"\n- Never add, remove, or paraphrase content — translate meaning faithfully."
                        f"\n- If a phrase has no direct equivalent, use the most natural culturally appropriate expression."
                        f"\n- Do not transliterate — write in the native script of the target language."
-                       f"\n\nTranslate now."
+                       f"\n\nTranslate ALL text now."
 )
                 },
                 {"role": "user", "content": protected}
@@ -151,7 +154,7 @@ def _strip_llm_preamble(text: str) -> str:
 
 def translate_to_language(text: str, target_lang: str) -> str:
     """
-    Translate HTML from English to target language.
+    Translate HTML to target language (including English).
     Splits HTML at safe </div> boundaries to avoid cutting mid-tag.
     Strips any LLM preamble sentences from each chunk.
 
@@ -159,13 +162,13 @@ def translate_to_language(text: str, target_lang: str) -> str:
     For plain text (subjects, short messages), use translate_text_to_language().
 
     Args:
-        text: English HTML to translate
-        target_lang: ISO 639-1 language code (e.g. 'fr', 'de', 'hi', 'ar')
+        text: HTML to translate
+        target_lang: ISO 639-1 language code (e.g. 'en', 'fr', 'de', 'hi', 'ar')
 
     Returns:
         Translated HTML in target language. Returns original if translation fails.
     """
-    if not target_lang or target_lang == "en":
+    if not target_lang:
         return text
 
     protected_text, placeholders = protect_req_ids(text)

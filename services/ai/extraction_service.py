@@ -54,22 +54,24 @@ transport_mode : {json.dumps(TRANSPORT_MODES)}
 container_type : {json.dumps(CONTAINER_TYPES)}
 
 CRITICAL DATA TYPE RULES:
-1. STRING fields (must be quoted strings, even if they contain only numbers):
-   - customer_street_number: "5" (NOT 5)
-   - origin_street_number: "12" (NOT 12)  
-   - destination_street_number: "48" (NOT 48)
-   - customer_zip_code: "12345" (NOT 12345)
-   - origin_zip_code: "67890" (NOT 67890)
-   - destination_zip_code: "54321" (NOT 54321)
-   - All other text fields: customer_name, customer_street, etc.
+1. STRING fields (must be quoted strings):
+   - customer_street_number: "5"
+   - customer_zip_code: "12345"
+   - origin_zip_code: "67890"
+   - destination_zip_code: "54321"
+   - All other text fields: customer_name, city, country, etc.
 
 2. INTEGER fields (numbers without quotes):
    - quantity: 10 (NOT "10")
 
-3. FLOAT fields (decimal numbers without quotes):
-   - cargo_weight: 25.5 (NOT "25.5")
-   - volume: 2.3 (NOT "2.3")
-   - length, width, height: 1.2 (NOT "1.2")
+3. WEIGHT/DIMENSION fields — ALWAYS include the unit as a string:
+   - cargo_weight: "4800 kg"  (NOT 4800)
+   - volume: "22 CBM"         (NOT 22)
+   - length: "1.2 m"          (NOT 1.2)
+   - height: "1.5 m"          (NOT 1.5)
+   - width: "1.0 m"           (NOT 1.0)
+   If no unit is mentioned in the email, use the most common unit for that field:
+   cargo_weight → kg, volume → CBM, length/height/width → m
 
 4. BOOLEAN fields (true/false without quotes):
    - stackable: true (NOT "true")
@@ -79,7 +81,7 @@ Extraction Rules:
 1. Extract only values explicitly mentioned.
 2. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
 3. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
-4. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
+4. Convert written numbers to digits: "ten" → "10 kg"
 5. Unknown or missing fields → null
 6. CRITICAL — for transport_mode, package_type, shipment_type, container_type, incoterm:
    Use ONLY the exact string from the allowed list. Do NOT paraphrase or extend.
@@ -90,8 +92,8 @@ Extraction Rules:
    If no allowed value fits closely enough → null
 
 EXAMPLES:
-✅ CORRECT: {{"customer_street_number": "5", "quantity": 10, "cargo_weight": 25.5, "stackable": true}}
-❌ WRONG: {{"customer_street_number": 5, "quantity": "10", "cargo_weight": "25.5", "stackable": "true"}}
+✅ CORRECT: {{"customer_street_number": "5", "quantity": 10, "cargo_weight": "4800 kg", "volume": "22 CBM", "length": "1.2 m", "stackable": true}}
+❌ WRONG: {{"customer_street_number": 5, "quantity": "10", "cargo_weight": 4800, "volume": 22}}
 
 Return ONLY JSON in this format:
 {_JSON_FORMAT}
@@ -224,22 +226,24 @@ transport_mode : {json.dumps(TRANSPORT_MODES)}
 container_type : {json.dumps(CONTAINER_TYPES)}
 
 CRITICAL DATA TYPE RULES:
-1. STRING fields (must be quoted strings, even if they contain only numbers):
-   - customer_street_number: "5" (NOT 5)
-   - origin_street_number: "12" (NOT 12)  
-   - destination_street_number: "48" (NOT 48)
-   - customer_zip_code: "12345" (NOT 12345)
-   - origin_zip_code: "67890" (NOT 67890)
-   - destination_zip_code: "54321" (NOT 54321)
-   - All other text fields: customer_name, customer_street, etc.
+1. STRING fields (must be quoted strings):
+   - customer_street_number: "5"
+   - customer_zip_code: "12345"
+   - origin_zip_code: "67890"
+   - destination_zip_code: "54321"
+   - All other text fields: customer_name, city, country, etc.
 
 2. INTEGER fields (numbers without quotes):
    - quantity: 10 (NOT "10")
 
-3. FLOAT fields (decimal numbers without quotes):
-   - cargo_weight: 25.5 (NOT "25.5")
-   - volume: 2.3 (NOT "2.3")
-   - length, width, height: 1.2 (NOT "1.2")
+3. WEIGHT/DIMENSION fields — ALWAYS include the unit as a string:
+   - cargo_weight: "4800 kg"  (NOT 4800)
+   - volume: "22 CBM"         (NOT 22)
+   - length: "1.2 m"          (NOT 1.2)
+   - height: "1.5 m"          (NOT 1.5)
+   - width: "1.0 m"           (NOT 1.0)
+   If no unit is mentioned in the email, use the most common unit for that field:
+   cargo_weight → kg, volume → CBM, length/height/width → m
 
 4. BOOLEAN fields (true/false without quotes):
    - stackable: true (NOT "true")
@@ -249,12 +253,12 @@ Extraction Rules:
 1. Extract ALL values explicitly mentioned in the email (not just the missing fields)
 2. shipment_type = LCL / FCL / AIR — NEVER put these in container_type
 3. container_type = physical container size only (e.g. "40' GP", "20' High Cube")
-4. Convert written numbers to digits: "ten" → 10.0, "twenty" → 20.0
+4. Convert written numbers to digits: "ten" → "10 kg"
 5. If a field is not mentioned → null
 
 EXAMPLES:
-✅ CORRECT: {{"customer_street_number": "5", "quantity": 10, "cargo_weight": 25.5, "stackable": true}}
-❌ WRONG: {{"customer_street_number": 5, "quantity": "10", "cargo_weight": "25.5", "stackable": "true"}}
+✅ CORRECT: {{"customer_street_number": "5", "quantity": 10, "cargo_weight": "4800 kg", "volume": "22 CBM", "length": "1.2 m", "stackable": true}}
+❌ WRONG: {{"customer_street_number": 5, "quantity": "10", "cargo_weight": 4800, "volume": 22}}
 
 Return JSON with ALL fields (set to null if not mentioned):
 {all_fields_format}

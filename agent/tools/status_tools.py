@@ -15,13 +15,14 @@ from models.shipment import Message
 from services.shipment.status_service import get_shipment_status_context
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment_thread_id, update_shipment, push_message_log
+from services.shipment.shipment_service import update_shipment_thread_id, update_shipment, push_message_log, get_shipment_by_request_id
+from services.ai.language_service import translate_to_language, translate_text_to_language
 
 logger = logging.getLogger(__name__)
 
 
 @tool
-async def send_status_update(request_id: str, customer_email: str, customer_name: str = "Customer", last_message_id: str = None) -> str:
+async def send_status_update(request_id: str, customer_email: str, customer_name: str = "Customer", last_message_id: str = None, detected_lang: str = "en") -> str:
     """Send shipment status update to customer.
     
     Args:
@@ -29,6 +30,7 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
         customer_email: Customer email address
         customer_name: Customer name for personalization
         last_message_id: Last message ID for conversation lookup
+        detected_lang: ISO 639-1 language code from DETECTED_LANG in context (e.g. 'fr', 'de')
         
     Returns:
         Confirmation string with sent message ID
@@ -40,7 +42,6 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
         if not request_id or request_id.lower() in ["null", "none", "", "unknown"]:
             logger.warning(f"[status_tools] No request ID provided by {customer_email}")
             
-            # Send email asking for request ID
             request_id_email_html = build_email(
                 email_type="missing_info",
                 customer_name=customer_name,
@@ -59,26 +60,18 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
             )
             
             subject = "Request ID Required for Status Inquiry"
-            
+            if detected_lang != "en":
+                request_id_email_html = translate_to_language(request_id_email_html, detected_lang)
+                subject = translate_text_to_language(subject, detected_lang)
+
             msg_id = send_email(
                 to=customer_email,
                 subject=subject,
                 body_html=request_id_email_html,
                 request_id="UNKNOWN"
             )
-            
-            request_id_message_log = Message(
-                message_id=msg_id,
-                sender_email=settings.GMAIL_ADDRESS,
-                sender_type="system",
-                direction="outgoing",
-                subject=subject,
-                body="Request ID required email sent for status inquiry.",
-                received_at=datetime.utcnow()
-            )
 
             logger.info(f"[status_tools] Request ID needed email sent to {customer_email}")
-            
             return f"✅ Request ID required email sent to {customer_email} | msg_id={msg_id} | status=REQUEST_ID_NEEDED"
 
         # Continue with normal status lookup using provided request_id
@@ -91,7 +84,6 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
         if not status_result["found"]:
             logger.warning(f"[status_tools] Shipment {request_id} not found for {customer_email}")
             
-            # Enhanced error message with guidance
             guidance_html = build_email(
                 email_type="missing_info",
                 customer_name=customer_name,
@@ -109,6 +101,10 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
             )
             
             error_subject = f"Shipment Not Found - {request_id}"
+            if detected_lang != "en":
+                guidance_html = translate_to_language(guidance_html, detected_lang)
+                error_subject = translate_text_to_language(error_subject, detected_lang)
+
             error_msg_id = send_email(
                 to=customer_email,
                 subject=error_subject,
@@ -116,20 +112,17 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
                 request_id=request_id
             )
             
-            # Log error email to database
-            error_message_log = Message(
-                message_id=error_msg_id,
-                sender_email=settings.GMAIL_ADDRESS,
-                sender_type="system",
-                direction="outgoing",
-                subject=error_subject,
-                body=f"Status inquiry error: Shipment not found",
-                received_at=datetime.utcnow(),
-            )
-            
             await push_message_log(
                 request_id=request_id,
-                message=error_message_log.model_dump(),
+                message=Message(
+                    message_id=error_msg_id,
+                    sender_email=settings.GMAIL_ADDRESS,
+                    sender_type="system",
+                    direction="outgoing",
+                    subject=error_subject,
+                    body="Status inquiry error: Shipment not found",
+                    received_at=datetime.utcnow(),
+                ).model_dump(),
                 sent_message_id=error_msg_id,
                 status="NOT_FOUND",
             )
@@ -139,15 +132,19 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
         # Shipment found - proceed with normal status update
         shipment = status_result["shipment"]
         
-        # Extract customer name from request_data if available, otherwise use provided name
         extracted_customer_name = (
             shipment.request_data.get("required", {}).get("customer_name") or
             shipment.request_data.get("customer_name") or
             customer_name
         )
 
-        # Prepare status email
         all_fields = REQUIRED_FIELDS + OPTIONAL_FIELDS
+        
+        # Override with DB language if available
+        shipment_doc = await get_shipment_by_request_id(request_id)
+        lang_meta = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
+        detected_lang = (lang_meta.get("detected_language") or detected_lang) if isinstance(lang_meta, dict) else detected_lang
+        
         email_body = build_email(
             email_type="status",
             customer_name=extracted_customer_name,
@@ -156,10 +153,17 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
             all_fields=all_fields,
             status=shipment.status,
             message=f"Thank you for your inquiry.Based on our latest system update, your shipment {shipment.request_id} is currently in {shipment.status.replace('_', ' ')} status."
+            lang=detected_lang,
+            message=f"I have checked our system, and your shipment {shipment.request_id} is currently in {shipment.status.replace('_', ' ')} status."
         )
 
-        # Send status email
         subject = f"Shipment Status Update - {shipment.request_id}"
+        
+        if detected_lang != "en":
+            logger.info(f"[status_tools] Translating status email to '{detected_lang}' for {customer_email}")
+            email_body = translate_to_language(email_body, detected_lang)
+            subject = translate_text_to_language(subject, detected_lang)
+
         outgoing_message_id = send_email(
             to=customer_email,
             subject=subject,
@@ -167,7 +171,6 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
             request_id=shipment.request_id
         )
 
-        # Prepare outgoing message object
         outgoing_msg = Message(
             message_id=outgoing_message_id,
             sender_email=settings.GMAIL_ADDRESS,
@@ -178,14 +181,12 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
             received_at=datetime.utcnow()
         )
 
-        # Update database
         await update_shipment_thread_id(
             request_id=shipment.request_id,
             new_thread_id=outgoing_message_id,
             new_message=outgoing_msg.model_dump()
         )
         
-        # Also log the message using push_message_log for consistency
         await push_message_log(
             request_id=shipment.request_id,
             message=outgoing_msg.model_dump(),
@@ -194,7 +195,6 @@ async def send_status_update(request_id: str, customer_email: str, customer_name
         )
 
         logger.info(f"[status_tools] Status update sent for {shipment.request_id}")
-        
         return f"✅ Status update sent to {customer_email} | msg_id={outgoing_message_id} | status={shipment.status}"
 
     except Exception as e:

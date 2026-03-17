@@ -15,7 +15,8 @@ from models.shipment import Message
 from services.shipment.cancellation_service import verify_cancellation_eligibility
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import push_message_log
+from services.shipment.shipment_service import push_message_log, get_shipment_by_request_id
+from services.ai.language_service import translate_to_language, translate_text_to_language
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,12 @@ async def cancel_shipment(request_id: str, customer_email: str) -> str:
         if not verification["eligible"]:
             error_msg = verification["error"]
             logger.warning(f"[cancellation_tools] Cancellation rejected: {error_msg}")
-            
-            # Send rejection email
+
+            # Get language from DB for rejection email
+            shipment_doc = await get_shipment_by_request_id(request_id)
+            lang_meta = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
+            detected_lang = (lang_meta.get("detected_language") or "en") if isinstance(lang_meta, dict) else "en"
+
             email_body = build_email(
                 email_type="status",
                 customer_name=customer_email,
@@ -52,14 +57,20 @@ async def cancel_shipment(request_id: str, customer_email: str) -> str:
                 status="CANCEL_REJECTED",
                 message=f"Your cancellation request could not be processed: {error_msg}"
             )
-            
+
+            out_subject = "Cancellation Request - Unable to Process"
+            if detected_lang != "en":
+                logger.info(f"[cancellation_tools] Translating rejection email to '{detected_lang}' for {customer_email}")
+                email_body = translate_to_language(email_body, detected_lang)
+                out_subject = translate_text_to_language(out_subject, detected_lang)
+
             outgoing_message_id = send_email(
                 to=customer_email,
-                subject="Cancellation Request - Unable to Process",
+                subject=out_subject,
                 body_html=email_body,
                 request_id=request_id or ""
             )
-            
+
             return f"❌ Cancellation rejected: {error_msg} | msg_id={outgoing_message_id}"
 
         # 2. Process cancellation
@@ -71,6 +82,11 @@ async def cancel_shipment(request_id: str, customer_email: str) -> str:
             customer_email
         )
         
+        # Get detected language from database
+        shipment_doc = await get_shipment_by_request_id(request_id)
+        lang_meta = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
+        detected_lang = (lang_meta.get("detected_language") or "en") if isinstance(lang_meta, dict) else "en"
+        
         email_body = build_email(
             email_type="status",
             customer_name=customer_name,
@@ -78,10 +94,17 @@ async def cancel_shipment(request_id: str, customer_email: str) -> str:
             request_data=shipment.request_data,
             all_fields=all_fields,
             status="CANCELLED",
+            lang=detected_lang,
             message=f"As per your request, shipment {shipment.request_id} has been successfully cancelled."
         )
 
         out_subject = f"Shipment Cancelled 🛑 - {shipment.request_id}"
+        
+        # Translate if not English
+        if detected_lang != "en":
+            logger.info(f"[cancellation_tools] Translating cancellation email to '{detected_lang}' for {customer_email}")
+            email_body = translate_to_language(email_body, detected_lang)
+            out_subject = translate_text_to_language(out_subject, detected_lang)
         outgoing_message_id = send_email(
             to=customer_email,
             subject=out_subject,

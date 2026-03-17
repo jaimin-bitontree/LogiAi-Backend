@@ -111,6 +111,19 @@ CRITICAL DISTINCTION - READ CAREFULLY:
 - Only use operator_pricing if you see actual dollar amounts, rates, or prices being PROVIDED
 - PDF content counts as part of the email — if PDF has origin + destination → new_request
 
+REPLY EMAILS — VERY IMPORTANT:
+- If the subject starts with "Re:" AND the body provides specific field values (transport mode, weight,
+  volume, city, country, incoterm, package type, container type, shipment type, etc.)
+  → ALWAYS classify as missing_information, even if the word "confirm" or "confirmen" appears casually.
+- The key distinction: is the customer PROVIDING DATA or APPROVING A QUOTE?
+  - Providing data (transport mode: Sea, weight: 1200 kg, etc.) → missing_information
+  - Approving a quoted price ("I accept the quote", "please proceed with booking") → confirmation
+- Short replies with just field values like "Cargo Weight: 1200 kg\nVolume: 3.5 CBM" → missing_information
+- Replies like "el modo de transporte será: Mar" (transport mode will be: Sea) → missing_information
+- Replies like "le mode de transport est: Mer" (transport mode is: Sea) → missing_information
+- Do NOT classify as confirmation unless the customer is explicitly approving a PRICE/QUOTATION
+- "Please confirm receipt" or "confirmen la recepción" in a data-reply → still missing_information
+
 Also extract "request_id" — ONLY extract IDs that follow this exact format: REQ-YYYY-XXXXXXXXXX
 Example: REQ-2026-0311081356708170
 Any other document numbers like PKL-, INV-, DOC-, SC- are NOT request IDs → set null.
@@ -140,37 +153,49 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
 
     email_content = f"Subject: {subject}\n\nBody:\n{body}" if subject else f"Body:\n{body}"
 
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": INTENT_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Classify the intent of this email:\n\n{email_content}",
-                },
-            ],
-            temperature=0.1,
-            max_tokens=64,
-        )
+    # Try primary key first, then fallback keys
+    from config.settings import GROQ_API_KEYS
+    api_keys = [settings.GROQ_API_KEY_2] if settings.GROQ_API_KEY_2 else []
+    api_keys += [k for k in GROQ_API_KEYS if k not in api_keys]
 
-        raw_text = response.choices[0].message.content.strip()
-        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+    # Model fallback list for intent detection
+    intent_models = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "openai/gpt-oss-120b"]
 
-        parsed = json.loads(raw_text)
+    last_error = None
+    for api_key in api_keys:
+        for model in intent_models:
+            try:
+                groq_client = Groq(api_key=api_key)
+                response = groq_client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": f"Classify the intent of this email:\n\n{email_content}",
+                        },
+                    ],
+                    temperature=0.1,
+                    max_tokens=64,
+                )
 
-        return IntentResult(
-            intent=EmailIntent(parsed["intent"]),
-            request_id=parsed.get("request_id"),
-        )
+                raw_text = response.choices[0].message.content.strip()
+                raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+                parsed = json.loads(raw_text)
 
-    except json.JSONDecodeError as e:
-        raise ValueError(f"LLM returned invalid JSON: {e}")
-    except KeyError as e:
-        raise ValueError(f"Missing expected field in LLM response: {e}")
-    except ValueError as e:
-        raise ValueError(f"Invalid intent value returned by LLM: {e}")
-    except Exception as e:
-        raise RuntimeError(f"Intent detection failed: {e}")
-    finally:
-        logger.debug(f"[intent_service] detect_intent() | subject: '{subject[:50]}' | body: '{body[:50]}...'")
+                return IntentResult(
+                    intent=EmailIntent(parsed["intent"]),
+                    request_id=parsed.get("request_id"),
+                )
+
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                if "rate_limit" in err_str.lower() or "429" in err_str:
+                    logger.warning(f"[intent_service] Rate limit on {model}, trying next...")
+                    continue
+                # Non-rate-limit error — try next model
+                logger.warning(f"[intent_service] {model} failed: {e}, trying next...")
+                continue
+
+    raise RuntimeError(f"Intent detection failed: {last_error}")

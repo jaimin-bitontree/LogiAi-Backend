@@ -74,10 +74,32 @@ def translate_with_llm(text: str) -> str:
         return text
 
 
+_REQ_ID_PATTERN = re.compile(r'REQ-\d{4}-\d+')
+
+
+def _protect_req_ids(text: str) -> tuple[str, dict]:
+    """Replace REQ-YYYY-XXXXXXXXXX patterns with placeholders before translation."""
+    placeholders = {}
+    def replacer(m):
+        key = f"__REQID{len(placeholders)}__"
+        placeholders[key] = m.group(0)
+        return key
+    protected = _REQ_ID_PATTERN.sub(replacer, text)
+    return protected, placeholders
+
+
+def _restore_req_ids(text: str, placeholders: dict) -> str:
+    """Restore original REQ IDs from placeholders after translation."""
+    for key, original in placeholders.items():
+        text = text.replace(key, original)
+    return text
+
+
 def translate_text_to_language(text: str, target_lang: str) -> str:
     """
     Translate plain text (not HTML) to target language.
     Use this for subjects, short messages — NOT for HTML bodies.
+    REQ-YYYY-XXXXXXXXXX IDs are preserved and never translated.
 
     Args:
         text: Plain text to translate
@@ -92,6 +114,13 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
         response = client.chat.completions.create(
             model=settings.LANGUAGE_TRANSLATE_MODEL,
             max_tokens=200,
+
+    protected, placeholders = _protect_req_ids(text)
+
+    try:
+        response = client.chat.completions.create(
+            model=settings.LANGUAGE_TRANSLATE_MODEL,
+            max_tokens=300,
             messages=[
                 {
                     "role": "system",
@@ -105,10 +134,19 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
                     )
                 },
                 {"role": "user", "content": text}
+                        f"Translate the following text to ISO 639-1 language '{target_lang}'. "
+                        f"Output ONLY the translated text. "
+                        f"Do NOT ask questions. Do NOT explain. Do NOT add any commentary. "
+                        f"If the text is already in the target language, return it as-is. "
+                        f"Return the translation immediately with no preamble."
+                    )
+                },
+                {"role": "user", "content": protected}
             ],
             temperature=0
         )
         translated = response.choices[0].message.content.strip()
+        translated = _restore_req_ids(translated, placeholders)
         logger.info(f"[language_service] Text translated to '{target_lang}': {translated}")
         return translated
     except Exception as e:
@@ -176,6 +214,10 @@ def translate_to_language(text: str, target_lang: str) -> str:
         return text
 
     chunks = _split_html_into_chunks(text, chunk_size=4000)
+    # Protect REQ IDs before splitting/translating
+    protected_text, placeholders = _protect_req_ids(text)
+
+    chunks = _split_html_into_chunks(protected_text, chunk_size=4000)
     translated_chunks = []
 
     logger.info(f"[language_service] Translating HTML to '{target_lang}' | {len(text)} chars | {len(chunks)} chunk(s)")
@@ -196,6 +238,7 @@ def translate_to_language(text: str, target_lang: str) -> str:
                             f"ONLY translate visible text — do NOT add, remove, or generate any new content. "
                             f"Do NOT invent new sections, tables, rows, or data that do not exist in the input. "
                             f"Do NOT change numeric values, dates, IDs, email addresses, or Request IDs. "
+                            f"Do NOT change numeric values, dates, email addresses, or any token that looks like __REQID0__, __REQID1__, etc. "
                             f"Preserve ALL HTML tags, attributes, and structure exactly as-is. "
                             f"Do NOT modify, remove, or alter any CSS style attributes — preserve padding, margin, color, font-weight, width, border, and all other style values exactly as-is. "
                             f"Only translate the visible human-readable text inside HTML tags. "
@@ -216,5 +259,7 @@ def translate_to_language(text: str, target_lang: str) -> str:
             translated_chunks.append(chunk)
 
     translated = "".join(translated_chunks)
+    # Restore REQ IDs after all chunks are assembled
+    translated = _restore_req_ids(translated, placeholders)
     logger.info(f"[language_service] HTML translation complete → '{target_lang}' ({len(translated)} chars)")
     return translated

@@ -39,8 +39,8 @@ TOOLS = [
 ]
 
 # ── Model fallback list (in order of preference) ──────────────
-# Only 70B models support reliable tool calling
-# 8B models generate malformed tool calls with LangChain
+# llama-3.3-70b-versatile is the best Groq model for tool calling
+# gpt-oss-120b as fallback — fast and cheap
 MODEL_FALLBACK = [
     "llama-3.3-70b-versatile",   # Only reliable option
 ]

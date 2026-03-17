@@ -16,11 +16,9 @@ scheduler = AsyncIOScheduler()
 async def job():
     logger.info(f"⏳ Polling at {datetime.now()}")
 
-    loop = asyncio.get_running_loop()
-
     try:
         # 🔹 Step 1: Fetch raw emails (IMAP is blocking)
-        raw_emails = await loop.run_in_executor(
+        raw_emails = await asyncio.get_event_loop().run_in_executor(
             None, fetch_unread_emails
         )
 
@@ -30,8 +28,7 @@ async def job():
         for raw in raw_emails:
 
             try:
-                # result = await run_workflow(raw)
-                result = asyncio.create_task(run_workflow(raw))
+                result = await run_workflow(raw)
                 if result:
                     logger.info(f"✅ Processed: {result.get('subject')}")
                 else:

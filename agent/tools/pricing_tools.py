@@ -122,6 +122,11 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
             logger.info(f"[pricing_tools] Translating pricing email to '{detected_lang}' for {customer_email}")
             email_body  = translate_to_language(email_body, detected_lang)
             out_subject = translate_text_to_language(out_subject, detected_lang)
+        # 4. Translate email body only — subject kept as-is to preserve "Quotation" and REQ ID
+        out_subject = f"LogiAI Quotation — {request_id}: {pricing_data.transport_mode or ''}"
+        if detected_lang != "en":
+            logger.info(f"[pricing_tools] Translating pricing email to '{detected_lang}' for {customer_email}")
+            email_body = translate_to_language(email_body, detected_lang)
 
         # 5. Send email to customer
         outgoing_message_id = send_email(

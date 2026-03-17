@@ -91,6 +91,7 @@ SUBJECT: {subject}
 INTENT: {intent}
 ACTION: {directive}
 MISSING_FIELDS: {missing_fields}
+DETECTED_LANG: {state.get("language_metadata", {}).get("detected_language", "en") if isinstance(state.get("language_metadata"), dict) else getattr(state.get("language_metadata"), "detected_language", "en") or "en"}
 
 EMAIL SNIPPET (INTERNAL DB RECORD):
 ---
@@ -104,7 +105,8 @@ When calling email tools, use these parameters:
 - customer_email: {customer_email}
 - customer_name: {customer_name}
 - subject: {subject}
-- missing_fields: {missing_fields}"""
+- missing_fields: {missing_fields}
+- detected_lang: (use the DETECTED_LANG value above)"""
     
     msg = HumanMessage(content=seed_message.strip())
     logger.debug(f"[context_builder_node] SEED MESSAGE:\n{msg.content}\n")

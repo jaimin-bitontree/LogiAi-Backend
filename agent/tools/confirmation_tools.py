@@ -43,7 +43,6 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
            (not conversation_id or conversation_id.lower() in ["null", "none", "", "unknown"]):
             logger.warning(f"[confirmation_tools] No request ID provided by {customer_email}")
             
-            # Send email asking for request ID
             request_id_email_html = build_email(
                 email_type="missing_info",
                 customer_name=customer_name,
@@ -62,27 +61,18 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             )
             
             subject = "Request ID Required for Shipment Confirmation"
-            
+            if detected_lang != "en":
+                request_id_email_html = translate_to_language(request_id_email_html, detected_lang)
+                subject = translate_text_to_language(subject, detected_lang)
+
             msg_id = send_email(
                 to=customer_email,
                 subject=subject,
                 body_html=request_id_email_html,
                 request_id="UNKNOWN"
             )
-            
-            request_id_message_log = Message(
-                message_id=msg_id,
-                sender_email=settings.GMAIL_ADDRESS,
-                sender_type="system",
-                direction="outgoing",
-                subject=subject,
-                body="Request ID required email sent to customer.",
-                received_at=datetime.utcnow()
-            )
 
-            # Note: We can't push to shipment log without request_id, so we just return
             logger.info(f"[confirmation_tools] Request ID needed email sent to {customer_email}")
-            
             return f"✅ Request ID required email sent to {customer_email} | msg_id={msg_id} | status=REQUEST_ID_NEEDED"
 
         # Fetch shipment from DB
@@ -103,7 +93,6 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
         if not shipment:
             logger.warning(f"[confirmation_tools] Shipment {request_id} not found")
             
-            # Enhanced error message with guidance
             guidance_html = build_email(
                 email_type="missing_info",
                 customer_name=customer_name,
@@ -121,6 +110,10 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             )
             
             error_subject = f"Shipment Not Found - {request_id}"
+            if detected_lang != "en":
+                guidance_html = translate_to_language(guidance_html, detected_lang)
+                error_subject = translate_text_to_language(error_subject, detected_lang)
+
             error_msg_id = send_email(
                 to=customer_email,
                 subject=error_subject,
@@ -184,6 +177,15 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
 
             return f"✅ Pricing reminder sent to operator | msg_id={reminder_msg_id} | status=PRICING_PENDING"
 
+        # Handle MISSING_INFO status — customer is still providing data, not confirming
+        if current_status == "MISSING_INFO":
+            logger.info(f"[confirmation_tools] Shipment still in MISSING_INFO — treating as missing_information reply")
+            return (
+                f"⚠️ Shipment {request_id} is still in MISSING_INFO status. "
+                f"The customer is likely providing missing field values, not confirming a quote. "
+                f"Call extract_missing_field_values to extract the data from the email body."
+            )
+
         # Handle non-QUOTED status
         if current_status != "QUOTED":
             return f"❌ Cannot confirm shipment with status '{current_status}', expected 'QUOTED'"
@@ -235,6 +237,11 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
         })
 
         # 3. Send thank-you email to customer
+        # Override with DB language if available, fall back to detected_lang param
+        shipment_doc = await get_shipment_by_request_id(request_id)
+        lang_meta = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
+        detected_lang = (lang_meta.get("detected_language") or detected_lang) if isinstance(lang_meta, dict) else detected_lang
+        
         customer_html = build_email(
             email_type="status",
             customer_name=customer_name,
@@ -242,6 +249,7 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             request_data=request_data,
             all_fields=all_fields,
             status="CONFIRMED",
+            lang=detected_lang,
             message=(
                 "Thank you for confirming your shipment with LogiAI. "
                 "We are delighted to have you on board and will handle your shipment "
@@ -254,6 +262,12 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             ]
         )
         customer_subject = f"Re: {subject} -- Shipment Confirmed"
+        
+        # Translate if not English
+        if detected_lang != "en":
+            logger.info(f"[confirmation_tools] Translating confirmation email to '{detected_lang}' for {customer_email}")
+            customer_html = translate_to_language(customer_html, detected_lang)
+            customer_subject = translate_text_to_language(customer_subject, detected_lang)
 
         customer_msg_id = send_email(
             to=customer_email,

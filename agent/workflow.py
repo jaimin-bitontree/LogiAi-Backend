@@ -22,6 +22,8 @@ from agent.nodes.preprocessing.reqid_generator_node import generate_reqid
 from agent.nodes.preprocessing.context_builder_node import context_builder_node
 from agent.agent_node import call_agent, TOOLS
 from models.shipment import LanguageMetadata, ValidationResult, Attachment
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
 
 logger = logging.getLogger(__name__)
 
@@ -155,8 +157,7 @@ def route_after_intent(state: AgentState) -> str:
             logger.warning(f"[workflow] Intent '{intent}' but no context (req_id + conversation_id both null)")
             
             # Send guidance email
-            from services.email.email_sender import send_email
-            from services.email.email_template import build_email
+            
             
             guidance_html = build_email(
                 email_type="missing_info",

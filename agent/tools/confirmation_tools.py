@@ -14,8 +14,9 @@ from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment, push_message_log,find_by_request_id
+from services.shipment.shipment_service import update_shipment, push_message_log,find_by_request_id,find_by_any_message_id
 from db.client import get_db
+
 
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,6 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
         # If request_id is null/missing, try conversation_id
         if not request_id or request_id.lower() in ["null", "none", "", "unknown"]:
             if conversation_id and conversation_id.lower() not in ["null", "none", "", "unknown"]:
-                from services.shipment.shipment_service import find_by_any_message_id
                 shipment = await find_by_any_message_id(conversation_id)
                 if shipment:
                     request_id = shipment.request_id  # Update request_id

@@ -42,7 +42,7 @@ TOOLS = [
 # Only 70B models support reliable tool calling
 # 8B models generate malformed tool calls with LangChain
 MODEL_FALLBACK = [
-    "openai/gpt-oss-120b",   # Only reliable option
+    "llama-3.3-70b-versatile",   # Only reliable option
 ]
 
 def get_llm_with_tools():
@@ -80,7 +80,7 @@ You have access to these tools:
 3. send_missing_info_email(request_id: str, customer_email: str, customer_name: str, subject: str, missing_fields: list) - Request missing information
 4. send_complete_info_emails(request_id: str, customer_email: str, customer_name: str, subject: str) - Send confirmation when complete
 5. calculate_and_send_pricing(request_id: str, pricing_email_body: str) - Process operator pricing and send quote
-6. send_status_update(request_id: str, customer_email: str, last_message_id: str) - Send status update to customer
+6. send_status_update(request_id: str, customer_email: str, customer_name: str, last_message_id: str) - Send status update to customer
 7. update_shipment_status(request_id: str, new_status: str) - Update shipment status in database
 8. process_shipment_confirmation(request_id: str, customer_email: str) - Handle customer confirmation
 9. cancel_shipment(request_id: str, customer_email: str) - Process cancellation request

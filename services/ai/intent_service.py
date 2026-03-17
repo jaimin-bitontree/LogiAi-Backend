@@ -48,6 +48,10 @@ Classify the given email into exactly ONE of these intents:
                    "Where is my order?", "Any updates on my shipment?", "When will it be delivered?"
                    IMPORTANT: If email asks about status of an existing shipment → classify as status_inquiry
                    IMPORTANT: Status inquiry does NOT need to include request_id in the email itself
+                   
+                   EXCEPTION: If subject contains "Status Update" BUT body contains shipment data
+                   (volume, weight, container type, dimensions, cargo details), then classify as
+                   missing_information instead - customer is providing data, not asking for status.
 
 4. confirmation - Sender is confirming a previously discussed shipment or booking.
                  Keywords: "confirm", "accept", "proceed", "book", "yes please go ahead", "accepted", "approve"

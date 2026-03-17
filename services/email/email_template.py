@@ -13,6 +13,10 @@ Usage:
 """
 
 from html import escape
+from typing import Optional, List
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import Literal, List, Optional
 from models.shipment import PricingSchema
 
@@ -218,6 +222,44 @@ def _section_pricing(pricing: PricingSchema) -> str:
 
     notes_html = f'<p style="font-size:13px;color:#777;margin-top:16px;"><i>Note: {escape(pricing.calculation_notes)}</i></p>' if pricing.calculation_notes else ""
 
+    # Calculate total costs
+    total_main = sum(float(c.amount.replace(',', '')) if isinstance(c.amount, str) else float(c.amount) for c in pricing.main_freight_charges if c.amount)
+    total_origin = sum(float(c.amount.replace(',', '')) if isinstance(c.amount, str) else float(c.amount) for c in pricing.origin_charges if c.amount)
+    total_dest = sum(float(c.amount.replace(',', '')) if isinstance(c.amount, str) else float(c.amount) for c in pricing.destination_charges if c.amount)
+    total_additional = sum(float(c.amount.replace(',', '')) if isinstance(c.amount, str) else float(c.amount) for c in pricing.additional_charges if c.amount)
+    
+    grand_total = total_main + total_origin + total_dest + total_additional
+    currency = pricing.main_freight_charges[0].currency if pricing.main_freight_charges else "USD"
+    
+    # Total summary section
+    total_summary_html = f"""
+    <div style="margin-top:32px;padding:20px;background:#f0f9ff;border:2px solid #3498db;border-radius:6px;">
+        <h3 style="color:#2c3e50;margin-top:0;margin-bottom:16px;text-align:center;">💰 Total Cost Summary</h3>
+        <table style="width:100%;font-size:14px;">
+            <tr>
+                <td style="padding:8px;color:#555;">Main Freight Charges:</td>
+                <td style="padding:8px;text-align:right;font-weight:600;">{total_main:,.2f} {escape(currency)}</td>
+            </tr>
+            <tr>
+                <td style="padding:8px;color:#555;">Origin Charges:</td>
+                <td style="padding:8px;text-align:right;font-weight:600;">{total_origin:,.2f} {escape(currency)}</td>
+            </tr>
+            <tr>
+                <td style="padding:8px;color:#555;">Destination Charges:</td>
+                <td style="padding:8px;text-align:right;font-weight:600;">{total_dest:,.2f} {escape(currency)}</td>
+            </tr>
+            <tr>
+                <td style="padding:8px;color:#555;">Additional Charges:</td>
+                <td style="padding:8px;text-align:right;font-weight:600;">{total_additional:,.2f} {escape(currency)}</td>
+            </tr>
+            <tr style="border-top:2px solid #3498db;">
+                <td style="padding:12px 8px;color:#2c3e50;font-size:16px;font-weight:700;">GRAND TOTAL:</td>
+                <td style="padding:12px 8px;text-align:right;color:#2980b9;font-size:18px;font-weight:700;">{grand_total:,.2f} {escape(currency)}</td>
+            </tr>
+        </table>
+    </div>
+    """
+
     return f"""
     <div style="margin-top:24px;">
         <h3 style="color:#2980b9;margin-bottom:16px;border-left:4px solid #2980b9;padding-left:12px;">💰 Quotation Details</h3>
@@ -227,6 +269,7 @@ def _section_pricing(pricing: PricingSchema) -> str:
         {dest}
         {additional}
         {terms_html}
+        {total_summary_html}
         {notes_html}
     </div>
     <div style="margin-top:24px;text-align:center;">
@@ -312,6 +355,47 @@ def _section_spam_rejection() -> str:
     """
 
 
+def _section_notification_reminder() -> str:
+    """Generate notification reminder section."""
+    return """
+    <div style="background:#e8f4fd;border:1px solid #bee3f8;border-radius:6px;padding:20px;margin-bottom:20px;">
+        <h3 style="color:#2b6cb0;margin-top:0;margin-bottom:12px;font-size:18px;">
+            🔔 Quote Reminder
+        </h3>
+        <p style="color:#2c5282;margin:0;font-size:15px;line-height:1.6;">
+            This is a friendly reminder that your quote is ready for review. 
+            Please find the complete pricing details below and let us know if you have any questions or would like to proceed.
+        </p>
+    </div>
+    """
+
+
+def _section_pricing_details(pricing_details: Optional[List] = None) -> str:
+    """Generate pricing details section for notifications."""
+    if not pricing_details:
+        return ""
+    
+    pricing_html = ""
+    for pricing in pricing_details:
+        # Convert dict to PricingSchema object if needed
+        if isinstance(pricing, dict):
+            from models.shipment import PricingSchema
+            try:
+                pricing_obj = PricingSchema(**pricing)
+                pricing_html += _section_pricing(pricing_obj)
+            except Exception as e:
+                logger.warning(f"Failed to convert pricing dict to PricingSchema: {e}")
+                continue
+        elif hasattr(pricing, 'model_dump'):
+            # Already a Pydantic object
+            pricing_html += _section_pricing(pricing)
+        else:
+            # Unknown format, skip
+            continue
+    
+    return pricing_html
+
+
 # ─────────────────────────────────────────────────────────────
 # PUBLIC API
 # ─────────────────────────────────────────────────────────────
@@ -319,7 +403,7 @@ def _section_spam_rejection() -> str:
 from models.shipment import PricingSchema
 
 def build_email(
-    email_type:    Literal["missing_info", "pricing", "status", "spam"],
+    email_type:    Literal["missing_info", "pricing", "status", "spam", "notification"],
     customer_name: str = "",
     request_id:    str = "",
 
@@ -332,6 +416,9 @@ def build_email(
     field_options: Optional[dict] = None,
     # pricing only (Uses PricingSchema object)
     pricing: Optional[PricingSchema] = None,
+    
+    # notification only
+    pricing_details: Optional[List] = None,
 
     # status only
     status:  Optional[str] = None,
@@ -406,6 +493,9 @@ def build_email(
 
     elif email_type == "status":
         body = _section_status(status or "", message) + data_section
+    
+    elif email_type == "notification":
+        body = _section_notification_reminder() + _section_pricing_details(pricing_details) + data_section
 
     else:
         body = data_section

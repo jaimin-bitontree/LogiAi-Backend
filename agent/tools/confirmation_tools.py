@@ -22,13 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-async def process_shipment_confirmation(request_id: str, customer_email: str, customer_name: str = "Customer") -> str:
+async def process_shipment_confirmation(request_id: str, customer_email: str, customer_name: str = "Customer", conversation_id: str = None) -> str:
     """Process customer shipment confirmation.
     
     Args:
         request_id: The shipment request ID (can be empty/null if not provided)
         customer_email: Customer email address
         customer_name: Customer name for personalization
+        conversation_id: The In-Reply-To header (None if new email, not a reply)
         
     Returns:
         Confirmation string with sent message IDs
@@ -36,8 +37,9 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
     try:
         logger.info(f"[confirmation_tools] Processing confirmation for {request_id}")
 
-        # Check if request_id is missing or invalid
-        if not request_id or request_id.lower() in ["null", "none", "", "unknown"]:
+        # Check if BOTH request_id AND conversation_id are missing
+        if (not request_id or request_id.lower() in ["null", "none", "", "unknown"]) and \
+           (not conversation_id or conversation_id.lower() in ["null", "none", "", "unknown"]):
             logger.warning(f"[confirmation_tools] No request ID provided by {customer_email}")
             
             # Send email asking for request ID
@@ -83,8 +85,20 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             return f"✅ Request ID required email sent to {customer_email} | msg_id={msg_id} | status=REQUEST_ID_NEEDED"
 
         # Fetch shipment from DB
-        # db = get_db()
-        shipment = await find_by_request_id({"request_id": request_id})
+        shipment = None
+        
+        # If request_id is null/missing, try conversation_id
+        if not request_id or request_id.lower() in ["null", "none", "", "unknown"]:
+            if conversation_id and conversation_id.lower() not in ["null", "none", "", "unknown"]:
+                from services.shipment.shipment_service import find_by_any_message_id
+                shipment = await find_by_any_message_id(conversation_id)
+                if shipment:
+                    request_id = shipment.request_id  # Update request_id
+                    logger.info(f"[confirmation_tools] Found by conversation_id: {request_id}")
+        else:
+            # request_id exists, use it
+            shipment = await find_by_request_id(request_id)
+            logger.info(f"[confirmation_tools] Found by request_id: {request_id}")
 
         if not shipment:
             logger.warning(f"[confirmation_tools] Shipment {request_id} not found")
@@ -116,9 +130,9 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             
             return f"❌ Shipment {request_id} not found | guidance_email_sent | msg_id={error_msg_id}"
 
-        current_status = shipment.get("status", "")
-        request_data = shipment.get("request_data", {})
-        subject = shipment.get("subject") or "Your Shipment"
+        current_status = shipment.status
+        request_data = shipment.request_data
+        subject = shipment.subject or "Your Shipment"
 
         logger.info(f"[confirmation_tools] Found shipment | status={current_status}")
 

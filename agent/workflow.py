@@ -120,9 +120,22 @@ builder.add_node("agent", call_agent)
 builder.add_node("tools", ToolNode(TOOLS))
 
 # ── Fixed pre-processing chain ────────────────────────────────
-builder.add_edge(START,             "parser")
-builder.add_edge("parser",          "language")
-builder.add_edge("language",        "intent")
+builder.add_edge(START, "parser")
+
+# ── Conditional routing after parser ──────────────────────────
+def route_after_parser(state: AgentState) -> str:
+    """Check if operator guidance was sent, if so stop workflow"""
+    if state.get("operator_guidance_sent"):
+        logger.info("[workflow] Operator guidance sent, stopping workflow")
+        return END
+    return "language"
+
+builder.add_conditional_edges("parser", route_after_parser, {
+    END: END,
+    "language": "language"
+})
+
+builder.add_edge("language", "intent")
 
 # ── Conditional routing after intent ──────────────────────────
 def route_after_intent(state: AgentState) -> str:

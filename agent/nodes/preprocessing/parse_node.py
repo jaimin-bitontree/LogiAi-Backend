@@ -353,6 +353,39 @@ async def parser_node(state: AgentState) -> AgentState:
         if not shipment_found:
             logger.error(f"[parse_node] ❌ Cannot match operator email to any shipment")
             logger.error(f"[parse_node] Tried: In-Reply-To, subject line, body text")
+            
+            # Check if BOTH request_id AND parent_message_id are null
+            request_id_missing = not request_id or request_id == ""
+            in_reply_to_missing = not parent_message_id or parent_message_id == ""
+            
+            if request_id_missing and in_reply_to_missing:
+                # Send guidance email to operator
+                from services.email.email_sender import send_email
+                from services.email.email_template import build_email
+                
+                operator_guidance_html = build_email(
+                    email_type="missing_info",
+                    customer_name="Operator",
+                    request_id="UNKNOWN",
+                    missing_fields=["request_id"],
+                    message=(
+                        "We received your pricing email but couldn't match it to any shipment. "
+                        "Please reply to this email with the Request ID (format: REQ-YYYY-XXXXXXXXXXXX) "
+                        "or reply directly to the customer's original email."
+                    )
+                )
+                
+                msg_id = send_email(
+                    to=settings.OPERATOR_EMAIL,
+                    subject="Request ID Required - Cannot Process Pricing",
+                    body_html=operator_guidance_html,
+                    request_id="UNKNOWN"
+                )
+                
+                logger.info(f"[parse_node] Guidance email sent to operator | msg_id={msg_id}")
+                
+                # Set flag to stop workflow
+                state["operator_guidance_sent"] = True
 
     # Update state
     state.update({

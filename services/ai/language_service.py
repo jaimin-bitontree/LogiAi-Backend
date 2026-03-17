@@ -54,28 +54,6 @@ def detect_language_with_llm(text: str) -> tuple[str, float]:
         return "en", 0.0
 
 
-def translate_with_llm(text: str) -> str:
-    try:
-        response = client.chat.completions.create(
-            #model = genai.GenerativeModel(
-            model=settings.LANGUAGE_TRANSLATE_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a professional translator. "
-                        "Translate the given text to English. "
-                        "Return only the translated text, nothing else."
-                    )
-                },
-                {"role": "user", "content": text[:4000]}
-            ],
-            temperature=0
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logger.error(f"LLM translation failed: {e}")
-        return text
 
 
 def translate_text_to_language(text: str, target_lang: str) -> str:

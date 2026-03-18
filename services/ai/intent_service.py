@@ -39,6 +39,12 @@ Classify the given email into exactly ONE of these intents:
                 IMPORTANT: If someone is ASKING for pricing, it's new_request, NOT operator_pricing
                 IMPORTANT: Even if the email body text is vague or short (e.g. "please refer attachments"),
                            if the PDF content has origin + destination → it is new_request
+                IMPORTANT: If the email contains a full set of shipment fields (origin city, origin country,
+                           destination city, destination country, plus cargo details like weight/volume/quantity)
+                           → ALWAYS classify as new_request, regardless of any closing phrases like
+                           "please confirm receipt", "confirmer la réception", "bestätigen Sie den Empfang",
+                           "confirme la recepción", or similar acknowledgement requests.
+                           A closing phrase asking for confirmation of receipt does NOT make it a confirmation intent.
 
 3. status_inquiry - Sender is asking about the status of an existing shipment/order.
                    Keywords: "status", "update", "where is my shipment", "tracking", "what is the status",
@@ -64,6 +70,8 @@ Classify the given email into exactly ONE of these intents:
                          details like weight or volume are present. Also use this if the
                          email is too vague to process as a shipment request.
                          IMPORTANT: Only use this if email shows INTENT to ship but lacks details.
+                         IMPORTANT: Do NOT use this if the email already contains origin city/country
+                         AND destination city/country AND cargo details — that is new_request.
 
 7. spam - Email is clearly spam, phishing, marketing, irrelevant, or off-topic.
           

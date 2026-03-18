@@ -205,7 +205,7 @@ def route_after_intent(state: AgentState) -> str:
 builder.add_conditional_edges(
     "intent",
     route_after_intent,
-    {"context_builder": "context_builder", "reqid": "reqid"}
+    {"context_builder": "context_builder", "reqid": "reqid", END: END}
 )
 
 # Keep the fixed edge from reqid to context_builder

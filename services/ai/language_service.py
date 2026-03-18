@@ -110,10 +110,6 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
     """
     if not target_lang or target_lang == "en":
         return text
-    try:
-        response = client.chat.completions.create(
-            model=settings.LANGUAGE_TRANSLATE_MODEL,
-            max_tokens=200,
 
     protected, placeholders = _protect_req_ids(text)
 
@@ -125,15 +121,6 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
                 {
                     "role": "system",
                     "content": (
-                        f"You are a professional translator specializing in natural, fluent translations. "
-                        f"Translate the following text to the language with ISO 639-1 code: '{target_lang}'. "
-                        f"Use natural, grammatically correct phrasing — do NOT translate word by word. "
-                        f"Write as a native speaker would — use proper grammar and culturally appropriate tone. "
-                        f"Return ONLY the translated text. "
-                        f"No HTML, no explanation, no preamble, nothing else."
-                    )
-                },
-                {"role": "user", "content": text}
                         f"Translate the following text to ISO 639-1 language '{target_lang}'. "
                         f"Output ONLY the translated text. "
                         f"Do NOT ask questions. Do NOT explain. Do NOT add any commentary. "

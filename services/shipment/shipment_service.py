@@ -316,14 +316,10 @@ async def get_shipment_by_request_id(request_id: str) -> Optional[dict]:
                 "status":              1,
                 "customer_email":      1,
                 "last_message_id":     1,
-<<<<<<< HEAD
                 "_id":                 0, 
-                "language_metadata":   1,  
-=======
                 "language_metadata":   1,  # needed for multi-language email responses
                 "pricing_details":     1,
                 "_id":                 0,   # never return _id
->>>>>>> 01d60a8 (Added language detect in other tools)
             }
         )
 

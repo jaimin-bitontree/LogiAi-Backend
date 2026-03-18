@@ -317,7 +317,9 @@ async def get_shipment_by_request_id(request_id: str) -> Optional[dict]:
                 "customer_email":      1,
                 "last_message_id":     1,
                 "_id":                 0, 
-                "language_metadata":   1,  
+                "language_metadata":   1,  # needed for multi-language email responses
+                "pricing_details":     1,
+                "_id":                 0,   # never return _id
             }
         )
 
@@ -355,3 +357,48 @@ async def list_shipments(
     docs = await cursor.to_list(length=page_size)
     
     return [Shipment(**doc) for doc in docs]
+
+
+# ============================================================
+# MESSAGE LOG HELPER
+# ============================================================
+
+async def log_outgoing_message(
+    request_id:  str,
+    message_id:  str,
+    subject:     str,
+    body:        str,
+    status:      str,
+    sender_type: str = "system",
+):
+    """
+    Build a Message object for an outgoing email and push it to the DB log.
+
+    Args:
+        request_id:  Shipment request ID
+        message_id:  Sent email Message-ID
+        subject:     Email subject
+        body:        Short description / body summary for the log
+        status:      Shipment status to set after logging
+        sender_type: Defaults to "system"
+    """
+    from datetime import datetime
+    from config.settings import settings
+    from models.shipment import Message
+
+    msg = Message(
+        message_id   = message_id,
+        sender_email = settings.GMAIL_ADDRESS,
+        sender_type  = sender_type,
+        direction    = "outgoing",
+        subject      = subject,
+        body         = body,
+        received_at  = datetime.utcnow(),
+    )
+    await push_message_log(
+        request_id      = request_id,
+        message         = msg.model_dump(),
+        sent_message_id = message_id,
+        status          = status,
+    )
+    logger.debug("[shipment_service] Logged | request_id=%s | msg_id=%s | status=%s", request_id, message_id, status)

@@ -11,6 +11,7 @@ from utils.email.attachment_helper import extract_text_from_pdf, extract_text_fr
 from utils.cloudinary_service import upload_pdf_to_cloudinary, upload_excel_to_cloudinary
 from agent.state import AgentState
 from config.settings import settings
+from services.ai.language_service import translate_with_llm, detect_language
 from langchain.tools import tool
 import re
 import logging
@@ -265,8 +266,8 @@ async def parser_node(state: AgentState) -> AgentState:
                         "shipment_found": shipment_found,
                         "subject": subject,
                         "body": updated_body,
-                        "translated_subject": subject,      
-                        "translated_body": updated_body,   
+                        "translated_subject": subject,
+                        "translated_body": translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
                         "attachments": attachments,
                     })
                 return state
@@ -301,8 +302,8 @@ async def parser_node(state: AgentState) -> AgentState:
                         "shipment_found": shipment_found,
                         "subject": subject,
                         "body": updated_body,
-                        "translated_subject": subject,      
-                        "translated_body": updated_body,   
+                        "translated_subject": subject,
+                        "translated_body": translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
                         "attachments": attachments,
                     })
                     return state
@@ -339,8 +340,8 @@ async def parser_node(state: AgentState) -> AgentState:
                         "shipment_found": shipment_found,
                         "subject": subject,
                         "body": updated_body,
-                        "translated_subject": subject,      
-                        "translated_body": updated_body,   
+                        "translated_subject": subject,
+                        "translated_body": translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
                         "attachments": attachments,
                     })
                     return state

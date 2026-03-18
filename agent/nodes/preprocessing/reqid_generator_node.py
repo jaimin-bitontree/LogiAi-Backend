@@ -1,4 +1,5 @@
 import logging
+import httpx
 from agent.state import AgentState
 from services.shipment.shipment_service import (
     find_by_any_message_id,
@@ -14,7 +15,7 @@ from utils.req_id_generator import generate_request_id
 logger = logging.getLogger(__name__)
 
 
-def _hydrate_state(state: AgentState, shipment: Shipment) -> AgentState:
+def _hydrate_state(state: AgentState, shipment: Shipment) -> dict:
     """Copy shipment fields into agent state, preserving the latest incoming email content."""
     shipment_dict = shipment.model_dump()
     
@@ -22,13 +23,14 @@ def _hydrate_state(state: AgentState, shipment: Shipment) -> AgentState:
     # These were set by parser, language, and intent nodes; we don't want to overwrite them with old DB values.
     preserve = ["body", "translated_body", "translated_subject", "thread_id", "conversation_id", "messages", "intent"]
     
+    updates = {}
     for key, value in shipment_dict.items():
         if key in preserve:
             continue
         if key in state and value is not None:
-             state[key] = value
+            updates[key] = value
 
-    return state
+    return updates
 
 
 async def _safe_lookup(fn, *args):
@@ -182,4 +184,3 @@ def _build_message(state: AgentState):
         body=state.get("body", ""),
         attachments=state.get("attachments", [])
     )
-

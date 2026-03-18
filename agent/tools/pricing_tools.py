@@ -12,9 +12,8 @@ from services.ai.pricing_service import extract_pricing_data
 from services.ai.language_service import translate_to_language
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import get_shipment_by_request_id, set_pricing_details
+from services.shipment.shipment_service import get_shipment_by_request_id, set_pricing_details, log_outgoing_message
 from utils.language_helpers import get_detected_lang
-from utils.message_log_helper import log_outgoing_message
 
 logger = logging.getLogger(__name__)
 

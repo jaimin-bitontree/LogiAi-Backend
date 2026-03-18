@@ -9,10 +9,9 @@ from config.settings import settings
 from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment, get_shipment_by_request_id
+from services.shipment.shipment_service import update_shipment, get_shipment_by_request_id, log_outgoing_message
 from services.ai.language_service import translate_to_language, translate_text_to_language
 from utils.language_helpers import get_detected_lang
-from utils.message_log_helper import log_outgoing_message
 
 logger = logging.getLogger(__name__)
 

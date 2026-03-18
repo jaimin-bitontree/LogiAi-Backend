@@ -3,16 +3,16 @@ agent/tools/confirmation_tools.py
 """
 
 import logging
-from datetime import datetime
 from langchain_core.tools import tool
 
 from config.settings import settings
 from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
-from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment, push_message_log, get_shipment_by_request_id
+from services.shipment.shipment_service import update_shipment, get_shipment_by_request_id
 from services.ai.language_service import translate_to_language, translate_text_to_language
+from utils.language_helpers import get_detected_lang
+from utils.message_log_helper import log_outgoing_message
 
 logger = logging.getLogger(__name__)
 
@@ -102,9 +102,8 @@ async def process_shipment_confirmation(
 
         logger.info(f"[confirmation_tools] Found shipment | status={current_status}")
 
-        # Override detected_lang with DB value
-        lang_meta     = shipment.get("language_metadata", {}) if shipment else {}
-        detected_lang = (lang_meta.get("detected_language") or detected_lang) if isinstance(lang_meta, dict) else detected_lang
+        # DB language overrides the passed-in detected_lang
+        detected_lang  = get_detected_lang(shipment) or detected_lang
 
         operator_email = settings.OPERATOR_EMAIL
         all_fields     = REQUIRED_FIELDS + OPTIONAL_FIELDS
@@ -118,12 +117,12 @@ async def process_shipment_confirmation(
         if current_status == "PRICING_PENDING":
             logger.info(f"[confirmation_tools] Sending pricing reminder to operator")
             reminder_html    = build_email(
-                email_type    = "pricing",
-                customer_name = "Operator",
-                request_id    = request_id,
-                request_data  = request_data,
-                all_fields    = all_fields,
-                pricing_details=[],
+                email_type     = "pricing",
+                customer_name  = "Operator",
+                request_id     = request_id,
+                request_data   = request_data,
+                all_fields     = all_fields,
+                pricing_details= [],
             )
             reminder_subject = f"[REMINDER] Pricing Required -- {request_id}"
             reminder_msg_id  = send_email(
@@ -132,19 +131,12 @@ async def process_shipment_confirmation(
                 body_html  = reminder_html,
                 request_id = request_id,
             )
-            await push_message_log(
-                request_id      = request_id,
-                message         = Message(
-                    message_id   = reminder_msg_id,
-                    sender_email = settings.GMAIL_ADDRESS,
-                    sender_type  = "system",
-                    direction    = "outgoing",
-                    subject      = reminder_subject,
-                    body         = "Pricing reminder sent to operator.",
-                    received_at  = datetime.utcnow(),
-                ).model_dump(),
-                sent_message_id = reminder_msg_id,
-                status          = "PRICING_PENDING",
+            await log_outgoing_message(
+                request_id = request_id,
+                message_id = reminder_msg_id,
+                subject    = reminder_subject,
+                body       = "Pricing reminder sent to operator.",
+                status     = "PRICING_PENDING",
             )
             return f"✅ Pricing reminder sent to operator | msg_id={reminder_msg_id} | status=PRICING_PENDING"
 
@@ -183,19 +175,12 @@ async def process_shipment_confirmation(
             body_html  = operator_html,
             request_id = request_id,
         )
-        await push_message_log(
-            request_id      = request_id,
-            message         = Message(
-                message_id   = operator_msg_id,
-                sender_email = settings.GMAIL_ADDRESS,
-                sender_type  = "system",
-                direction    = "outgoing",
-                subject      = operator_subject,
-                body         = "Operator notified -- customer confirmed the shipment.",
-                received_at  = datetime.utcnow(),
-            ).model_dump(),
-            sent_message_id = operator_msg_id,
-            status          = "CONFIRMED",
+        await log_outgoing_message(
+            request_id = request_id,
+            message_id = operator_msg_id,
+            subject    = operator_subject,
+            body       = "Operator notified -- customer confirmed the shipment.",
+            status     = "CONFIRMED",
         )
 
         # 2. Update status
@@ -233,19 +218,12 @@ async def process_shipment_confirmation(
             body_html  = customer_html,
             request_id = request_id,
         )
-        await push_message_log(
-            request_id      = request_id,
-            message         = Message(
-                message_id   = customer_msg_id,
-                sender_email = settings.GMAIL_ADDRESS,
-                sender_type  = "system",
-                direction    = "outgoing",
-                subject      = customer_subject,
-                body         = "Thank-you email sent to customer -- shipment confirmed.",
-                received_at  = datetime.utcnow(),
-            ).model_dump(),
-            sent_message_id = customer_msg_id,
-            status          = "CONFIRMED",
+        await log_outgoing_message(
+            request_id = request_id,
+            message_id = customer_msg_id,
+            subject    = customer_subject,
+            body       = "Thank-you email sent to customer -- shipment confirmed.",
+            status     = "CONFIRMED",
         )
 
         logger.info(f"[confirmation_tools] Confirmation processed for {request_id}")

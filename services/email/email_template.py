@@ -223,10 +223,20 @@ def _section_pricing(pricing: PricingSchema) -> str:
     notes_html = f'<p style="font-size:13px;color:#777;margin-top:16px;"><i>Note: {escape(pricing.calculation_notes)}</i></p>' if pricing.calculation_notes else ""
 
     # Calculate total costs
-    total_main = sum(float(c.amount.replace(',', '')) if isinstance(c.amount, str) else float(c.amount) for c in pricing.main_freight_charges if c.amount)
-    total_origin = sum(float(c.amount.replace(',', '')) if isinstance(c.amount, str) else float(c.amount) for c in pricing.origin_charges if c.amount)
-    total_dest = sum(float(c.amount.replace(',', '')) if isinstance(c.amount, str) else float(c.amount) for c in pricing.destination_charges if c.amount)
-    total_additional = sum(float(c.amount.replace(',', '')) if isinstance(c.amount, str) else float(c.amount) for c in pricing.additional_charges if c.amount)
+    def _safe_amount(c) -> float:
+        try:
+            if c.amount is None:
+                return 0.0
+            if isinstance(c.amount, str):
+                return float(c.amount.replace(',', ''))
+            return float(c.amount)
+        except (ValueError, TypeError):
+            return 0.0
+
+    total_main = sum(_safe_amount(c) for c in pricing.main_freight_charges if c.amount)
+    total_origin = sum(_safe_amount(c) for c in pricing.origin_charges if c.amount)
+    total_dest = sum(_safe_amount(c) for c in pricing.destination_charges if c.amount)
+    total_additional = sum(_safe_amount(c) for c in pricing.additional_charges if c.amount)
     
     grand_total = total_main + total_origin + total_dest + total_additional
     currency = pricing.main_freight_charges[0].currency if pricing.main_freight_charges else "USD"

@@ -81,6 +81,15 @@ Call handle_spam_email() to send rejection template."""
 
     directive = "EXTRACT ALL FIELDS" if intent == "new_request" else f"EXTRACT MISSING FIELDS: {missing_fields}"
     
+    # Safely extract detected_lang from language_metadata (dict or Pydantic object)
+    lang_meta = state.get("language_metadata")
+    if isinstance(lang_meta, dict):
+        detected_lang = lang_meta.get("detected_language") or "en"
+    elif lang_meta is not None:
+        detected_lang = getattr(lang_meta, "detected_language", None) or "en"
+    else:
+        detected_lang = "en"
+
     # Build seed message with all parameters needed for tool calls
     seed_message = f"""
 ### INCOMING SHIPMENT EMAIL ###
@@ -91,7 +100,7 @@ SUBJECT: {subject}
 INTENT: {intent}
 ACTION: {directive}
 MISSING_FIELDS: {missing_fields}
-DETECTED_LANG: {state.get("language_metadata", {}).get("detected_language", "en") if isinstance(state.get("language_metadata"), dict) else getattr(state.get("language_metadata"), "detected_language", "en") or "en"}
+DETECTED_LANG: {detected_lang}
 
 EMAIL SNIPPET (INTERNAL DB RECORD):
 ---

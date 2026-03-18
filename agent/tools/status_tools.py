@@ -3,7 +3,6 @@ agent/tools/status_tools.py
 """
 
 import logging
-from datetime import datetime
 from langchain_core.tools import tool
 
 from config.settings import settings
@@ -12,8 +11,10 @@ from models.shipment import Message
 from services.shipment.status_service import get_shipment_status_context
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment_thread_id, update_shipment, push_message_log, get_shipment_by_request_id
+from services.shipment.shipment_service import update_shipment_thread_id, update_shipment, get_shipment_by_request_id
 from services.ai.language_service import translate_to_language, translate_text_to_language
+from utils.language_helpers import get_detected_lang
+from utils.message_log_helper import log_outgoing_message
 
 logger = logging.getLogger(__name__)
 
@@ -101,19 +102,12 @@ async def send_status_update(
                 error_subject = translate_text_to_language(error_subject, detected_lang)
 
             error_msg_id = send_email(to=customer_email, subject=error_subject, body_html=html, request_id=request_id)
-            await push_message_log(
-                request_id      = request_id,
-                message         = Message(
-                    message_id   = error_msg_id,
-                    sender_email = settings.GMAIL_ADDRESS,
-                    sender_type  = "system",
-                    direction    = "outgoing",
-                    subject      = error_subject,
-                    body         = "Status inquiry error: Shipment not found",
-                    received_at  = datetime.utcnow(),
-                ).model_dump(),
-                sent_message_id = error_msg_id,
-                status          = "NOT_FOUND",
+            await log_outgoing_message(
+                request_id = request_id,
+                message_id = error_msg_id,
+                subject    = error_subject,
+                body       = "Status inquiry error: Shipment not found",
+                status     = "NOT_FOUND",
             )
             return f"❌ Shipment {request_id} not found | guidance_email_sent | msg_id={error_msg_id}"
 
@@ -127,8 +121,7 @@ async def send_status_update(
 
         # Override with DB language
         shipment_doc  = await get_shipment_by_request_id(request_id)
-        lang_meta     = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
-        detected_lang = (lang_meta.get("detected_language") or detected_lang) if isinstance(lang_meta, dict) else detected_lang
+        detected_lang = get_detected_lang(shipment_doc) or detected_lang
 
         email_body = build_email(
             email_type    = "status",
@@ -162,18 +155,18 @@ async def send_status_update(
             direction    = "outgoing",
             subject      = subject,
             body         = "Automated status update reply.",
-            received_at  = datetime.utcnow(),
         )
         await update_shipment_thread_id(
             request_id    = shipment.request_id,
             new_thread_id = outgoing_message_id,
             new_message   = outgoing_msg.model_dump(),
         )
-        await push_message_log(
-            request_id      = shipment.request_id,
-            message         = outgoing_msg.model_dump(),
-            sent_message_id = outgoing_message_id,
-            status          = shipment.status,
+        await log_outgoing_message(
+            request_id = shipment.request_id,
+            message_id = outgoing_message_id,
+            subject    = subject,
+            body       = "Automated status update reply.",
+            status     = shipment.status,
         )
 
         logger.info(f"[status_tools] Status update sent for {shipment.request_id}")

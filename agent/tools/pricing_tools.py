@@ -3,17 +3,18 @@ agent/tools/pricing_tools.py
 """
 
 import logging
-from datetime import datetime
 from langchain_core.tools import tool
 
 from config.settings import settings
 from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
-from models.shipment import Message, PricingSchema
+from models.shipment import PricingSchema
 from services.ai.pricing_service import extract_pricing_data
 from services.ai.language_service import translate_to_language
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import push_message_log, get_shipment_by_request_id, set_pricing_details
+from services.shipment.shipment_service import get_shipment_by_request_id, set_pricing_details
+from utils.language_helpers import get_detected_lang
+from utils.message_log_helper import log_outgoing_message
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,14 @@ def merge_pricing_data(existing_pricing: PricingSchema, new_pricing: PricingSche
         else:
             merged_dict[field] = existing_dict.get(field)
     return PricingSchema(**merged_dict)
+
+
+def _translate_if_needed(email_body: str, detected_lang: str, customer_email: str) -> str:
+    """Translate HTML email body to target language if not English."""
+    if detected_lang == "en":
+        return email_body
+    logger.info(f"[pricing_tools] Translating pricing email to '{detected_lang}' for {customer_email}")
+    return translate_to_language(email_body, detected_lang)
 
 
 @tool
@@ -63,8 +72,7 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
         )
 
         # 3. Get detected language from DB
-        lang_meta     = shipment_doc.get("language_metadata", {}) if shipment_doc else {}
-        detected_lang = (lang_meta.get("detected_language") or "en") if isinstance(lang_meta, dict) else "en"
+        detected_lang = get_detected_lang(shipment_doc)
 
         # 4. Build email (English first)
         all_fields = REQUIRED_FIELDS + OPTIONAL_FIELDS
@@ -80,37 +88,30 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
 
         # 5. Subject kept as-is — never translated to preserve "Quotation" and REQ ID
         out_subject = f"LogiAI Quotation — {request_id}: {pricing_data.transport_mode or ''}"
-        if detected_lang != "en":
-            logger.info(f"[pricing_tools] Translating pricing email to '{detected_lang}' for {customer_email}")
-            email_body = translate_to_language(email_body, detected_lang)
 
-        # 6. Send to customer
+        # 6. Translate body only if needed
+        email_body = _translate_if_needed(email_body, detected_lang, customer_email)
+
+        # 7. Send to customer
         outgoing_message_id = send_email(
             to         = customer_email,
             subject    = out_subject,
             body_html  = email_body,
-            request_id = request_id
+            request_id = request_id,
         )
 
-        # 7. Merge with existing pricing if any
+        # 8. Merge with existing pricing if any
         existing_pricing_list = shipment_doc.get("pricing_details", [])
         if existing_pricing_list:
             pricing_data = merge_pricing_data(PricingSchema(**existing_pricing_list[0]), pricing_data)
 
-        # 8. Log + update DB
-        await push_message_log(
-            request_id      = request_id,
-            message         = Message(
-                message_id   = outgoing_message_id,
-                sender_email = settings.GMAIL_ADDRESS,
-                sender_type  = "system",
-                direction    = "outgoing",
-                subject      = out_subject,
-                body         = f"Quotation sent. Transport Mode: {pricing_data.transport_mode}",
-                received_at  = datetime.utcnow()
-            ).model_dump(),
-            sent_message_id = outgoing_message_id,
-            status          = "QUOTED"
+        # 9. Log + update DB
+        await log_outgoing_message(
+            request_id = request_id,
+            message_id = outgoing_message_id,
+            subject    = out_subject,
+            body       = f"Quotation sent. Transport Mode: {pricing_data.transport_mode}",
+            status     = "QUOTED",
         )
         await set_pricing_details(request_id=request_id, pricing_data=pricing_data.model_dump())
 

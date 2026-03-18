@@ -1,6 +1,5 @@
 import json
-import os
-from dotenv import load_dotenv
+import logging
 from groq import Groq
 from pydantic import ValidationError
 from schemas.extraction_schema import ExtractionSchema
@@ -17,10 +16,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+from config.settings import settings
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-EXTRACTION_MODEL = os.environ.get("EXTRACTION_MODEL")
+client = Groq(api_key=settings.GROQ_API_KEY)
+EXTRACTION_MODEL = settings.EXTRACTION_MODEL
 
 # ===================================================
 # JSON FORMAT — built directly from ExtractionSchema

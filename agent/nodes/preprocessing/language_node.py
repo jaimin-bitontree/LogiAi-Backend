@@ -1,14 +1,10 @@
 import logging
-from config.settings import settings
 from agent.state import AgentState
 from models.shipment import LanguageMetadata
 from services.ai.language_service import detect_language, translate_with_llm
+from utils.language_helpers import MIN_BODY_LEN_FOR_DETECTION
 
 logger = logging.getLogger(__name__)
-
-# Minimum body length to trust langdetect alone.
-# Short replies (e.g. "Modo de transporte: Marítimo") are often misclassified.
-_MIN_BODY_LEN_FOR_DETECTION = 80
 
 
 def language_node(state: AgentState) -> dict:
@@ -28,7 +24,7 @@ def language_node(state: AgentState) -> dict:
     #   - If body is long enough → trust body detection
     #   - If body is short AND it's a reply (conversation_id set) → trust subject language
     #   - If body is short AND it's a new email → use LLM fallback via detect_language
-    if body_sample and len(body_sample) >= _MIN_BODY_LEN_FOR_DETECTION:
+    if body_sample and len(body_sample) >= MIN_BODY_LEN_FOR_DETECTION:
         body_lang, body_confidence = detect_language(body_sample)
     elif body_sample and conversation_id:
         # Short reply — trust the subject language (which carries the original thread lang)

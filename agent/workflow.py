@@ -190,16 +190,12 @@ def route_after_intent(state: AgentState) -> str:
     if intent == "spam":
         logger.info("[workflow] Spam detected - routing directly to context_builder (skipping reqid)")
         return "context_builder"
-    elif intent == "status_inquiry":
-        logger.info("[workflow] Status inquiry detected - routing directly to context_builder (skipping reqid)")
-        return "context_builder"
     elif intent == "operator_pricing":
         logger.info("[workflow] Operator pricing detected - routing directly to context_builder (skipping reqid)")
         return "context_builder"
-    elif intent == "confirmation":
-        logger.info("[workflow] confirmation detected- routing directly to context_builder (skipping reqid)")
-        return "context_builder"
     else:
+        # new_request, missing_information, status_inquiry, confirmation, cancellation
+        # all go through reqid so the node can look up the shipment by conversation_id or request_id
         return "reqid"
 
 builder.add_conditional_edges(
@@ -286,7 +282,16 @@ def should_continue(state: AgentState) -> str:
     return END
 
 builder.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
-builder.add_edge("tools", "agent")  # Always loop back to agent after tool runs
+
+def should_continue_after_tools(state: AgentState) -> str:
+    """After tools run, check if an email tool was executed — if so, END immediately
+    without making another LLM call."""
+    if state.get("email_tool_executed", False):
+        logger.info("[workflow] Email tool executed — ending workflow without extra LLM call")
+        return END
+    return "agent"
+
+builder.add_conditional_edges("tools", should_continue_after_tools, {"agent": "agent", END: END})
 
 graph = builder.compile()
 

@@ -45,7 +45,6 @@ TOOLS = [
 # llama-3.3-70b-versatile is the best Groq model for tool calling
 # gpt-oss-120b as fallback — fast and cheap
 MODEL_FALLBACK = [
-    "llama-3.3-70b-versatile",   # Best Groq model for tool calling
     "llama-3.1-8b-instant",      # Fallback if primary is rate limited
 ]
 

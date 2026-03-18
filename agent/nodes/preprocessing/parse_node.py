@@ -13,7 +13,7 @@ from utils.email.attachment_helper import extract_text_from_pdf, extract_text_fr
 from utils.cloudinary_service import upload_pdf_to_cloudinary, upload_excel_to_cloudinary
 from agent.state import AgentState
 from config.settings import settings
-from services.ai.language_service import translate_with_llm, detect_language
+from services.ai.language_service import translate_text_to_language, detect_language
 from langchain.tools import tool
 import re
 import logging
@@ -322,21 +322,21 @@ async def parser_node(state: AgentState) -> AgentState:
                 )
 
                 state.update({
-                    "message_ids":        message_ids,
-                    "last_message_id":    message_id,
-                    "request_id":         shipment.request_id,
-                    "customer_email":     shipment.customer_email,
-                    "request_data":       shipment.request_data,
-                    "status":             shipment.status,
-                    "pricing_details":    shipment.pricing_details,
-                    "is_operator":        is_operator,
-                    "shipment_found":     shipment_found,
-                    "subject":            subject,
-                    "body":               updated_body,
-                    "translated_subject": subject,
-                    "translated_body":    translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
-                    "attachments":        attachments,
-                })
+                        "message_ids": message_ids,
+                        "last_message_id": message_id,
+                        "request_id":shipment.request_id,
+                        "customer_email":shipment.customer_email,
+                        "request_data":shipment.request_data,
+                        "status":shipment.status,
+                        "pricing_details":shipment.pricing_details,
+                        "is_operator": is_operator,
+                        "shipment_found": shipment_found,
+                        "subject": subject,
+                        "body": updated_body,
+                        "translated_subject": subject,
+                        "translated_body": translate_text_to_language(updated_body, "en") if detect_language(updated_body[:500])[0] != "en" else updated_body,
+                        "attachments": attachments,
+                    })
                 return state
 
         # Strategy 2: Extract request_id from subject line
@@ -367,8 +367,8 @@ async def parser_node(state: AgentState) -> AgentState:
                         "subject":            subject,
                         "body":               updated_body,
                         "translated_subject": subject,
-                        "translated_body":    translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
-                        "attachments":        attachments,
+                        "translated_body": translate_text_to_language(updated_body, "en") if detect_language(updated_body[:500])[0] != "en" else updated_body,
+                        "attachments": attachments,
                     })
                     return state
                 else:
@@ -402,8 +402,8 @@ async def parser_node(state: AgentState) -> AgentState:
                         "subject":            subject,
                         "body":               updated_body,
                         "translated_subject": subject,
-                        "translated_body":    translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
-                        "attachments":        attachments,
+                        "translated_body": translate_text_to_language(updated_body, "en") if detect_language(updated_body[:500])[0] != "en" else updated_body,
+                        "attachments": attachments,
                     })
                     return state
                 else:

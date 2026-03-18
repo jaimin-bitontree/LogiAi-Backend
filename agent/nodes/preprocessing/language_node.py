@@ -1,7 +1,7 @@
 import logging
 from agent.state import AgentState
 from models.shipment import LanguageMetadata
-from services.ai.language_service import detect_language, translate_with_llm
+from services.ai.language_service import detect_language, translate_text_to_language
 from utils.language_helpers import MIN_BODY_LEN_FOR_DETECTION
 
 logger = logging.getLogger(__name__)

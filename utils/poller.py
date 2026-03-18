@@ -12,6 +12,20 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
+# Semaphore to limit concurrent email processing to 3
+EMAIL_SEMAPHORE = asyncio.Semaphore(3)
+
+
+async def process_email_with_limit(raw_email):
+    """Process single email with semaphore limit"""
+    async with EMAIL_SEMAPHORE:
+        try:
+            result = await run_workflow(raw_email)
+            return result
+        except Exception as e:
+            logger.error(f"❌ Failed to process email: {e}")
+            return None
+
 
 async def job():
     logger.info(f"⏳ Polling at {datetime.now()}")
@@ -24,26 +38,24 @@ async def job():
 
         logger.info(f"📬 Found {len(raw_emails)} emails")
 
-        # 🔹 Step 2: Process each email through LangGraph (run_workflow is now async)
+        if not raw_emails:
+            return
+
+        # 🔹 Step 2: Process emails with semaphore limit (max 3 concurrent)
+        tasks = []
         for raw in raw_emails:
-            try:
-                # Fire-and-forget — don't block the poller while the workflow runs
-                task = asyncio.create_task(run_workflow(raw))
+            task = asyncio.create_task(process_email_with_limit(raw))
+            tasks.append(task)
 
-                def _on_done(t: asyncio.Task):
-                    try:
-                        result = t.result()
-                        if result:
-                            logger.info(f"✅ Processed: {result.get('subject')}")
-                        else:
-                            logger.warning("⚠️  No result from workflow")
-                    except Exception as exc:
-                        logger.error(f"❌ Workflow task failed: {exc}")
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                task.add_done_callback(_on_done)
-
-            except Exception as e:
-                logger.error(f"❌ Failed to schedule workflow task: {e}")
+        # Process results
+        for i, result in enumerate(results):
+            if result and not isinstance(result, Exception):
+                logger.info(f"✅ Processed email {i+1}: {result.get('subject', 'Unknown')}")
+            else:
+                logger.error(f"❌ Failed to process email {i+1}")
 
     except Exception as e:
         logger.error(f"❌ Polling error: {e}")

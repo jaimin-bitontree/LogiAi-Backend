@@ -149,7 +149,7 @@ def route_after_intent(state: AgentState) -> str:
     is_operator = state.get("is_operator", False)
     
     # Check for all intents EXCEPT new_shipment_request
-    if intent != "new_request":
+    if intent not in ["new_request","spam"]:
         # Check if BOTH request_id AND conversation_id are null
         request_id_missing = not request_id or request_id.lower() in ["null", "none", "", "unknown"]
         conversation_id_missing = not conversation_id or conversation_id.lower() in ["null", "none", "", "unknown"]

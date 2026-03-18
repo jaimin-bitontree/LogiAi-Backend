@@ -336,12 +336,10 @@ async def get_shipment_by_request_id(request_id: str) -> Optional[dict]:
 
 
 async def list_shipments(
-    status: Optional[str] = None, 
-    page: int = 1, 
-    page_size: int = 10
+    status: Optional[str] = None
 ) -> List[Shipment]:
     """
-    Fetch shipments with optional status filtering and pagination.
+    Fetch all shipments with optional status filtering.
     Ordered by creation date (newest first).
     """
     db = get_db()
@@ -349,12 +347,9 @@ async def list_shipments(
     
     if status:
         query["status"] = status
-        
-    # Calculate how many records to skip
-    skip = (page - 1) * page_size
     
-    cursor = db.shipments.find(query).sort("created_at", -1).skip(skip).limit(page_size)
-    docs = await cursor.to_list(length=page_size)
+    cursor = db.shipments.find(query).sort("created_at", -1)
+    docs = await cursor.to_list(length=None)
     
     return [Shipment(**doc) for doc in docs]
 

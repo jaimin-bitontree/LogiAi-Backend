@@ -8,6 +8,7 @@ from config.settings import settings
 from db.client import connect_db, close_db
 from utils.poller import start_poller, stop_poller
 from api.shipment_router import router as shipment_router
+from api.auth_router import router as auth_router
 from fastapi.middleware.cors import CORSMiddleware
 # Configure logging to show in terminal
 logging.basicConfig(
@@ -57,13 +58,14 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(shipment_router)
+app.include_router(auth_router)
 
 
 

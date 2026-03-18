@@ -16,14 +16,52 @@ scheduler = AsyncIOScheduler()
 EMAIL_SEMAPHORE = asyncio.Semaphore(3)
 
 
+def mark_single_email_as_seen(message_id: str):
+    """Mark single email as seen by Message-ID"""
+    from services.email.gmail_receiver import connect_gmail
+    
+    mail = None
+    try:
+        mail = connect_gmail()
+        
+        # Search for email by Message-ID
+        status, email_ids = mail.search(None, f'HEADER Message-ID "{message_id}"')
+        
+        if status == "OK" and email_ids[0]:
+            email_id = email_ids[0].split()[0]  # Get first match
+            # Mark as seen
+            mail.store(email_id, "+FLAGS", "\\Seen")
+            logger.info(f"✅ Marked as seen: {message_id}")
+        else:
+            logger.warning(f"⚠️ Email not found for marking: {message_id}")
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to mark email as seen {message_id}: {e}")
+    
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+
+
 async def process_email_with_limit(raw_email):
-    """Process single email with semaphore limit"""
+    """Process single email with semaphore limit and immediate marking"""
     async with EMAIL_SEMAPHORE:
         try:
             result = await run_workflow(raw_email)
+            
+            # Mark as seen immediately after this email succeeds
+            if result:
+                message_id = extract_message_id(raw_email)
+                mark_single_email_as_seen(message_id)
+                logger.info(f"✅ Email processed and marked as seen")
+            
             return result
         except Exception as e:
             logger.error(f"❌ Failed to process email: {e}")
+            # Don't mark as seen if failed - email stays unread for retry
             return None
 
 
@@ -42,6 +80,7 @@ async def job():
             return
 
         # 🔹 Step 2: Process emails with semaphore limit (max 3 concurrent)
+        # Each email gets marked as seen immediately after successful processing
         tasks = []
         for raw in raw_emails:
             task = asyncio.create_task(process_email_with_limit(raw))
@@ -50,12 +89,18 @@ async def job():
         # Wait for all tasks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Process results
+        # Log final results (emails already marked individually)
+        successful_count = 0
+        failed_count = 0
         for i, result in enumerate(results):
             if result and not isinstance(result, Exception):
-                logger.info(f"✅ Processed email {i+1}: {result.get('subject', 'Unknown')}")
+                successful_count += 1
+                logger.info(f"✅ Email {i+1} processed successfully")
             else:
-                logger.error(f"❌ Failed to process email {i+1}")
+                failed_count += 1
+                logger.error(f"❌ Email {i+1} failed to process")
+        
+        logger.info(f"📊 Batch complete: {successful_count} successful, {failed_count} failed")
 
     except Exception as e:
         logger.error(f"❌ Polling error: {e}")

@@ -18,8 +18,14 @@ from langchain.tools import tool
 import re
 import logging
 from models.shipment import Message
-from services.shipment.shipment_service import push_message_log
+from services.shipment.shipment_service import (
+    push_message_log,
+    find_by_any_message_id,
+    find_by_request_id
+    )
 from datetime import datetime
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
 
 
 logger = logging.getLogger(__name__)
@@ -284,7 +290,6 @@ async def parser_node(state: AgentState) -> AgentState:
 
         # Strategy 1: Lookup by In-Reply-To header
         if parent_message_id:
-            from services.shipment.shipment_service import find_by_any_message_id
             shipment = await find_by_any_message_id(parent_message_id)
 
             if shipment:
@@ -342,8 +347,7 @@ async def parser_node(state: AgentState) -> AgentState:
             if match:
                 request_id = match.group(0)
                 logger.info(f"[parse_node] ✅ Extracted request_id from subject: {request_id}")
-
-                from services.shipment.shipment_service import find_by_request_id
+                
                 shipment = await find_by_request_id(request_id)
 
                 if shipment:
@@ -378,8 +382,7 @@ async def parser_node(state: AgentState) -> AgentState:
             if match:
                 request_id = match.group(0)
                 logger.info(f"[parse_node] ✅ Extracted request_id from body: {request_id}")
-
-                from services.shipment.shipment_service import find_by_request_id
+                
                 shipment = await find_by_request_id(request_id)
 
                 if shipment:
@@ -417,9 +420,8 @@ async def parser_node(state: AgentState) -> AgentState:
             in_reply_to_missing = not parent_message_id or parent_message_id == ""
 
             if request_id_missing and in_reply_to_missing:
-                from services.email.email_sender import send_email
-                from services.email.email_template import build_email
-
+                # Send guidance email to operator
+                
                 operator_guidance_html = build_email(
                     email_type="missing_info",
                     customer_name="Operator",
@@ -433,14 +435,23 @@ async def parser_node(state: AgentState) -> AgentState:
                 )
 
                 msg_id = send_email(
-                    to=settings.OPERATOR_EMAIL,
+                    to=customer_email,  # Send to the operator who sent the email
                     subject="Request ID Required - Cannot Process Pricing",
                     body_html=operator_guidance_html,
                     request_id="UNKNOWN"
                 )
 
                 logger.info(f"[parse_node] Guidance email sent to operator | msg_id={msg_id}")
+                logger.info(f"[parse_node] Stopping workflow - operator email cannot be matched")
+                
+                # Set flag to stop workflow and update minimal state
                 state["operator_guidance_sent"] = True
+                state["is_operator"] = True  
+                state["customer_email"] = customer_email
+                state["subject"] = subject
+                state["body"] = updated_body
+                
+                return state
 
     # Update state — only relevant attachments saved
     state.update({

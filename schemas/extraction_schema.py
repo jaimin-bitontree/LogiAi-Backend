@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, Union
 from config.constants import (
     INCOTERMS,
@@ -27,11 +27,12 @@ class ExtractionSchema(BaseModel):
     incoterm:                Optional[str] = None
     quantity:                Optional[int] = None
     package_type:            Optional[str] = None
-    cargo_weight:            Optional[float] = None
-    volume:                  Optional[float] = None
-    length:                  Optional[float] = None
-    height:                  Optional[float] = None
-    width:                   Optional[float] = None
+    # Accept int/float from LLM — model_validator converts to str
+    cargo_weight:            Optional[Union[str, int, float]] = None
+    volume:                  Optional[Union[str, int, float]] = None
+    length:                  Optional[Union[str, int, float]] = None
+    height:                  Optional[Union[str, int, float]] = None
+    width:                   Optional[Union[str, int, float]] = None
     container_type:          Optional[str] = None
     transport_mode:          Optional[str] = None
     shipment_type:           Optional[str] = None
@@ -54,47 +55,54 @@ class ExtractionSchema(BaseModel):
     temperature:                 Optional[Union[float, str]] = None
 
     # ===============================
-    # ENUM VALIDATORS
+    # VALIDATORS
     # ===============================
-    @field_validator("customer_street_number", "origin_street_number", "destination_street_number", 
+    @field_validator("customer_street_number", "origin_street_number", "destination_street_number",
                      "customer_zip_code", "origin_zip_code", "destination_zip_code")
     @classmethod
-    def convert_to_string(cls, v):
-        if v is not None:
-            return str(v)
-        return v
+    def coerce_zip_street_to_str(cls, v):
+        return str(v) if v is not None else v
+
+    @model_validator(mode="after")
+    def coerce_numeric_fields_to_str(self):
+        """Convert numeric weight/dimension fields to str after model creation."""
+        for field in ("cargo_weight", "volume", "length", "height", "width"):
+            val = getattr(self, field)
+            if val is not None and not isinstance(val, str):
+                setattr(self, field, str(val))
+        return self
 
     @field_validator("incoterm")
     @classmethod
     def validate_incoterm(cls, v):
         if v and v not in INCOTERMS:
-            return None  # Set to null instead of raising error
+            return None
         return v
 
     @field_validator("package_type")
     @classmethod
     def validate_package_type(cls, v):
         if v and v not in PACKAGE_TYPES:
-            return None  # Set to null instead of raising error
+            return None
         return v
 
     @field_validator("shipment_type")
     @classmethod
     def validate_shipment_type(cls, v):
         if v and v not in SHIPMENT_TYPES:
-            return None  # Set to null instead of raising error
+            return None
         return v
 
     @field_validator("transport_mode")
     @classmethod
     def validate_transport_mode(cls, v):
         if v and v not in TRANSPORT_MODES:
-            return None  # Set to null instead of raising error
+            return None
         return v
 
     @field_validator("container_type")
     @classmethod
     def validate_container_type(cls, v):
         if v and v not in CONTAINER_TYPES:
-            return None  # Set to null instead of raising error
+            return None
         return v

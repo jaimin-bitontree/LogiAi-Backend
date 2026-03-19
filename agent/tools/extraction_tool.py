@@ -67,11 +67,13 @@ async def extract_shipment_fields(request_id: str) -> dict:
 
     REQUIRED FIELDS (NUMERIC - no quotes):
     - quantity: 45 ← INTEGER
-    - cargo_weight: 2600.0 ← FLOAT
-    - volume: 14.0 ← FLOAT
-    - length: 1.2 ← FLOAT
-    - height: 1.5 ← FLOAT
-    - width: 1.0 ← FLOAT
+
+    REQUIRED FIELDS (WEIGHT/DIMENSION - string with unit):
+    - cargo_weight: "2600 kg" ← STRING with unit
+    - volume: "14 CBM"        ← STRING with unit
+    - length: "1.2 m"         ← STRING with unit
+    - height: "1.5 m"         ← STRING with unit
+    - width: "1.0 m"          ← STRING with unit
 
     OPTIONAL FIELDS (STRING - always in quotes):
     - contact_person_name: "Laura Becker"
@@ -112,8 +114,8 @@ async def extract_shipment_fields(request_id: str) -> dict:
     - "Origin Street Number: 12" → "origin_street_number": "12"
     - "Destination Street Number: 48" → "destination_street_number": "48"
     - "Quantity: 45" → "quantity": 45
-    - "Cargo Weight: 2600.0" → "cargo_weight": 2600.0
-    - "Volume: 14 CBM" → "volume": 14.0
+    - "Cargo Weight: 2600 kg" → "cargo_weight": "2600 kg"
+    - "Volume: 14 CBM" → "volume": "14 CBM"
     - "Stackable: Yes" → "stackable": true
     - "Dangerous: No" → "dangerous": false
 

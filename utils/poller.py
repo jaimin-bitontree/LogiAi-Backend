@@ -16,11 +16,9 @@ scheduler = AsyncIOScheduler()
 async def job():
     logger.info(f"⏳ Polling at {datetime.now()}")
 
-    loop = asyncio.get_running_loop()
-
     try:
         # 🔹 Step 1: Fetch raw emails (IMAP is blocking)
-        raw_emails = await loop.run_in_executor(
+        raw_emails = await asyncio.get_event_loop().run_in_executor(
             None, fetch_unread_emails
         )
 
@@ -28,17 +26,24 @@ async def job():
 
         # 🔹 Step 2: Process each email through LangGraph (run_workflow is now async)
         for raw in raw_emails:
-
             try:
-                # result = await run_workflow(raw)
-                result = asyncio.create_task(run_workflow(raw))
-                if result:
-                    logger.info(f"✅ Processed: {result.get('subject')}")
-                else:
-                    logger.warning("⚠️  No result from workflow")
+                # Fire-and-forget — don't block the poller while the workflow runs
+                task = asyncio.create_task(run_workflow(raw))
+
+                def _on_done(t: asyncio.Task):
+                    try:
+                        result = t.result()
+                        if result:
+                            logger.info(f"✅ Processed: {result.get('subject')}")
+                        else:
+                            logger.warning("⚠️  No result from workflow")
+                    except Exception as exc:
+                        logger.error(f"❌ Workflow task failed: {exc}")
+
+                task.add_done_callback(_on_done)
 
             except Exception as e:
-                logger.error(f"❌ Failed to process email: {e}")
+                logger.error(f"❌ Failed to schedule workflow task: {e}")
 
     except Exception as e:
         logger.error(f"❌ Polling error: {e}")

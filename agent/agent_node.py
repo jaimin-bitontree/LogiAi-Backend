@@ -42,10 +42,11 @@ TOOLS = [
 ]
 
 # ── Model fallback list (in order of preference) ──────────────
-# Only 70B models support reliable tool calling
-# 8B models generate malformed tool calls with LangChain
+# llama-3.3-70b-versatile is the best Groq model for tool calling
+# gpt-oss-120b as fallback — fast and cheap
 MODEL_FALLBACK = [
-    "llama-3.3-70b-versatile",   # Only reliable option
+    "llama-3.3-70b-versatile",   # Best Groq model for tool calling
+    "llama-3.1-8b-instant",      # Fallback if primary is rate limited
 ]
 
 # MODEL_FALLBACK = [
@@ -100,9 +101,9 @@ You have access to these tools:
 3. send_missing_info_email(request_id: str, customer_email: str, customer_name: str, subject: str, missing_fields: list) - Request missing information
 4. send_complete_info_emails(request_id: str, customer_email: str, customer_name: str, subject: str) - Send confirmation when complete
 5. calculate_and_send_pricing(request_id: str, pricing_email_body: str) - Process operator pricing and send quote
-6. send_status_update(request_id: str, customer_email: str, customer_name: str, last_message_id: str) - Send status update to customer
+6. send_status_update(request_id: str, customer_email: str, customer_name: str, last_message_id: str, detected_lang: str) - Send status update to customer
 7. update_shipment_status(request_id: str, new_status: str) - Update shipment status in database
-8. process_shipment_confirmation(request_id: str, customer_email: str) - Handle customer confirmation
+8. process_shipment_confirmation(request_id: str, customer_email: str, customer_name: str, detected_lang: str) - Handle customer confirmation
 9. cancel_shipment(request_id: str, customer_email: str) - Process cancellation request
 10. handle_spam_email(customer_email: str, subject: str) - Handle spam/phishing emails
 

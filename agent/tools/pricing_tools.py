@@ -102,7 +102,7 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
         # 8. Merge with existing pricing if any
         existing_pricing_list = shipment_doc.pricing_details or []
         if existing_pricing_list:
-            pricing_data = merge_pricing_data(PricingSchema(**existing_pricing_list[0]), pricing_data)
+            pricing_data = merge_pricing_data(existing_pricing_list[0], pricing_data)
 
         # 9. Log + update DB
         await log_outgoing_message(

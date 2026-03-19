@@ -28,7 +28,7 @@ def fetch_unread_emails() -> list[bytes]:
     """
     Fetch unread emails from Gmail.
     Returns:
-        List of raw RFC822 email bytes.
+        List of raw email bytes.
     """
 
     raw_emails: list[bytes] = []

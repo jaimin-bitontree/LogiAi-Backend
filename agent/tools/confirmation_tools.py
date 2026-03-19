@@ -14,9 +14,9 @@ from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment, push_message_log,find_by_request_id,find_by_any_message_id
-from db.client import get_db
-
+from services.shipment.shipment_service import update_shipment, find_by_request_id, log_outgoing_message
+from services.ai.language_service import translate_to_language, translate_text_to_language
+from utils.language_helpers import get_detected_lang
 
 logger = logging.getLogger(__name__)
 

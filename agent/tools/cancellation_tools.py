@@ -10,7 +10,7 @@ from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from services.shipment.cancellation_service import verify_cancellation_eligibility
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import get_shipment_by_request_id, log_outgoing_message
+from services.shipment.shipment_service import find_by_request_id, log_outgoing_message
 from services.ai.language_service import translate_to_language, translate_text_to_language
 from utils.language_helpers import get_detected_lang
 
@@ -41,7 +41,7 @@ async def cancel_shipment(request_id: str, customer_email: str) -> str:
             error_msg    = verification["error"]
             logger.warning(f"[cancellation_tools] Cancellation rejected: {error_msg}")
 
-            shipment_doc  = await get_shipment_by_request_id(request_id)
+            shipment_doc  = await find_by_request_id(request_id)
             detected_lang = get_detected_lang(shipment_doc)
 
             email_body = build_email(
@@ -70,7 +70,7 @@ async def cancel_shipment(request_id: str, customer_email: str) -> str:
         all_fields    = REQUIRED_FIELDS + OPTIONAL_FIELDS
         customer_name = shipment.request_data.get("customer_name") or customer_email
 
-        shipment_doc  = await get_shipment_by_request_id(request_id)
+        shipment_doc  = await find_by_request_id(request_id)
         detected_lang = get_detected_lang(shipment_doc)
 
         email_body = build_email(

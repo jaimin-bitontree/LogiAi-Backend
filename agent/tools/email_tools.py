@@ -9,7 +9,7 @@ from config.settings import settings
 from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS, PACKAGE_TYPES, CONTAINER_TYPES, INCOTERMS, SHIPMENT_TYPES, TRANSPORT_MODES
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import get_request_data, get_shipment_by_request_id, log_outgoing_message
+from services.shipment.shipment_service import get_request_data, find_by_request_id, log_outgoing_message
 from services.ai.language_service import translate_to_language, translate_text_to_language
 from utils.language_helpers import get_detected_lang
 
@@ -41,7 +41,7 @@ async def send_missing_info_email(
     """
     request_data  = await get_request_data(request_id)
     all_fields    = REQUIRED_FIELDS + OPTIONAL_FIELDS
-    shipment_doc  = await get_shipment_by_request_id(request_id)
+    shipment_doc  = await find_by_request_id(request_id)
     detected_lang = get_detected_lang(shipment_doc)
 
     field_options = {
@@ -122,7 +122,7 @@ async def send_complete_info_emails(
     all_fields     = REQUIRED_FIELDS + OPTIONAL_FIELDS
     operator_email = settings.OPERATOR_EMAIL
 
-    shipment_doc  = await get_shipment_by_request_id(request_id)
+    shipment_doc  = await find_by_request_id(request_id)
     detected_lang = get_detected_lang(shipment_doc)
 
     # ── Customer confirmation email ────────────────────────────

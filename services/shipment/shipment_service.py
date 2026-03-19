@@ -286,55 +286,6 @@ async def get_request_data(request_id: str) -> dict:
     return doc.get("request_data", {}) if doc else {}
 
 
-async def get_shipment_by_request_id(request_id: str) -> Optional[dict]:
-    """
-    Fetch a single shipment document from MongoDB by request_id.
-
-    Used by extraction tools to read email body and existing data
-    without passing large strings through the LLM tool calls.
-
-    Args:
-        request_id: The REQ-ID string e.g. REQ-2026-0309075733293729
-
-    Returns:
-        Shipment dict if found, None if not found.
-    """
-    db = get_db()
-    try:
-        shipment = await db["shipments"].find_one(
-            {"request_id": request_id},
-            {
-                # Only fetch fields we actually need
-                # Avoids loading entire document unnecessarily
-                "request_id":          1,
-                "subject":             1,
-                "translated_subject":  1,
-                "body":                1,
-                "translated_body":     1,
-                "request_data":        1,
-                "validation_result":   1,
-                "status":              1,
-                "customer_email":      1,
-                "last_message_id":     1,
-                "_id":                 0, 
-                "language_metadata":   1,  # needed for multi-language email responses
-                "pricing_details":     1,
-                "_id":                 0,   # never return _id
-            }
-        )
-
-        if not shipment:
-            logger.warning("[shipment_service] Not found: %s", request_id)
-            return None
-
-        logger.info("[shipment_service] Found: %s", request_id)
-        return shipment
-
-    except Exception as e:
-        logger.error("[shipment_service] get_shipment_by_request_id failed: %s | error: %s", request_id, e)
-        return None
-
-
 async def list_shipments(
     status: Optional[str] = None
 ) -> List[Shipment]:

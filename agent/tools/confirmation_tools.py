@@ -14,7 +14,7 @@ from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment, find_by_request_id, log_outgoing_message , push_message_log
+from services.shipment.shipment_service import update_shipment, find_by_request_id, find_by_any_message_id, log_outgoing_message , push_message_log
 from services.ai.language_service import translate_to_language, translate_text_to_language
 from utils.language_helpers import get_detected_lang
 
@@ -61,6 +61,12 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             )
             
             subject = "Request ID Required for Shipment Confirmation"
+            
+           
+            if detected_lang != "en":
+                logger.info(f"[confirmation_tools] Translating request_id email to '{detected_lang}' for {customer_email}")
+                request_id_email_html = translate_to_language(request_id_email_html, detected_lang)
+                subject = translate_text_to_language(subject, detected_lang)
             
             msg_id = send_email(
                 to=customer_email,
@@ -120,6 +126,13 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             )
             
             error_subject = f"Shipment Not Found - {request_id}"
+            
+            # Language translation for not found email
+            detected_lang = "en"  # Default since no shipment found
+            if detected_lang != "en":
+                logger.info(f"[confirmation_tools] Translating not_found email to '{detected_lang}' for {customer_email}")
+                guidance_html = translate_to_language(guidance_html, detected_lang)
+                error_subject = translate_text_to_language(error_subject, detected_lang)
             error_msg_id = send_email(
                 to=customer_email,
                 subject=error_subject,
@@ -253,6 +266,13 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             ]
         )
         customer_subject = f"Re: {subject} -- Shipment Confirmed"
+
+        # Language translation for customer confirmation email
+        detected_lang = get_detected_lang(shipment)
+        if detected_lang != "en":
+            logger.info(f"[confirmation_tools] Translating confirmation email to '{detected_lang}' for {customer_email}")
+            customer_html = translate_to_language(customer_html, detected_lang)
+            customer_subject = translate_text_to_language(customer_subject, detected_lang)
 
         customer_msg_id = send_email(
             to=customer_email,

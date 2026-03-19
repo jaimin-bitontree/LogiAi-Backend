@@ -1,7 +1,7 @@
 import asyncio
 from email import policy
 from email.parser import BytesParser
-from groq import Groq
+from google import genai
 from models.shipment import Attachment
 from utils.email.email_utils import (
     extract_email_address,
@@ -30,8 +30,8 @@ from services.email.email_template import build_email
 
 logger = logging.getLogger(__name__)
 
-# Groq client for attachment relevance check
-_groq_client = Groq(api_key=settings.GROQ_API_KEY)
+# Gemini client for attachment relevance check
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -54,42 +54,32 @@ def _check_attachment_relevance(page1_text: str, filename: str) -> bool:
         return False
 
     try:
-        response = _groq_client.chat.completions.create(
+        prompt = f"""You are a logistics document classifier. 
+You will receive text from a document. 
+Your job is to decide if it contains shipment-related information. 
+
+Shipment-related information includes ANY of these: 
+origin city, origin country, destination city, destination country, 
+cargo weight, volume, quantity, package type, container type, 
+shipment type, transport mode, incoterm, customer name, 
+contact person, description of goods, dangerous goods, stackable, 
+freight details, logistics data, packing list, bill of lading, 
+commercial invoice with shipping details. 
+
+Reply with ONLY one word: YES or NO. 
+YES = document contains shipment-related data. 
+NO = document has no shipment-related data.
+
+Does this document contain shipment-related information?
+
+{page1_text[:1500]}"""
+        
+        response = client.models.generate_content(
             model=settings.LANGUAGE_DETECT_MODEL,
-            temperature=0,
-            max_tokens=10,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a logistics document classifier. "
-                        "You will receive text from a document. "
-                        "Your job is to decide if it contains shipment-related information. "
-                        "\n\n"
-                        "Shipment-related information includes ANY of these: "
-                        "origin city, origin country, destination city, destination country, "
-                        "cargo weight, volume, quantity, package type, container type, "
-                        "shipment type, transport mode, incoterm, customer name, "
-                        "contact person, description of goods, dangerous goods, stackable, "
-                        "freight details, logistics data, packing list, bill of lading, "
-                        "commercial invoice with shipping details. "
-                        "\n\n"
-                        "Reply with ONLY one word: YES or NO. "
-                        "YES = document contains shipment-related data. "
-                        "NO = document has no shipment-related data."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Does this document contain shipment-related information?\n\n"
-                        f"{page1_text[:1500]}"
-                    )
-                }
-            ]
+            contents=prompt
         )
 
-        answer      = response.choices[0].message.content.strip().upper()
+        answer      = response.text.strip().upper()
         is_relevant = answer.startswith("YES")
 
         logger.info(

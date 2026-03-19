@@ -22,7 +22,7 @@ async def send_missing_info_email(
     customer_email: str,
     customer_name:  str,
     subject:        str,
-    missing_fields: list,
+    missing_fields: list[str],
 ) -> str:
     """
     Sends an email to the customer requesting missing shipment fields,

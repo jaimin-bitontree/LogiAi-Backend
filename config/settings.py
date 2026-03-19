@@ -8,13 +8,11 @@ class Settings(BaseSettings):
     GMAIL_APP_PASSWORD: str
     IMAP_GMAIL:        str
     IMAP_PORT:         int
-    GROQ_API_KEY:                  str
-    GROQ_API_KEY_2:                str = ""  # Optional second API key
-    GROQ_API_KEY_3:                str = ""  # Optional third API key
+    GEMINI_API_KEY:    str
     LANGUAGE_CONFIDENCE_THRESHOLD: float = 0.85
-    LANGUAGE_DETECT_MODEL:         str   = "llama-3.1-8b-instant"
-    LANGUAGE_TRANSLATE_MODEL:      str   = "llama-3.1-8b-instant"
-    EXTRACTION_MODEL:              str   = "llama-3.1-8b-instant"
+    LANGUAGE_DETECT_MODEL:         str   = "gemini-2.5-flash"
+    LANGUAGE_TRANSLATE_MODEL:      str   = "gemini-2.5-flash"
+    EXTRACTION_MODEL:              str   = "gemini-2.5-flash"
     SMTP_HOST:                     str   = "smtp.gmail.com"
     SMTP_PORT:                     int   = 587
     
@@ -40,10 +38,5 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Build list of available API keys
-GROQ_API_KEYS = [settings.GROQ_API_KEY]
-if settings.GROQ_API_KEY_2:
-    GROQ_API_KEYS.append(settings.GROQ_API_KEY_2)
-if settings.GROQ_API_KEY_3:
-    GROQ_API_KEYS.append(settings.GROQ_API_KEY_3)
+# No need for multiple API keys with Gemini (higher rate limits)
 

@@ -109,7 +109,7 @@ async def job():
 async def start_poller():
     try:
         if not scheduler.get_jobs():
-            scheduler.add_job(job, "interval", minutes=5)
+            scheduler.add_job(job, "interval", minutes=30)
 
         scheduler.start()
         logger.info("🚀 Gmail Poller started")

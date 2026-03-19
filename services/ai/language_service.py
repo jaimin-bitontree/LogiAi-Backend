@@ -1,13 +1,13 @@
 import re
 import logging
-from groq import Groq
+from google import genai
+from google.genai import types
 from langdetect import detect_langs, LangDetectException
 from config.settings import settings
 from utils.language_helpers import protect_req_ids, restore_req_ids
 
 logger = logging.getLogger(__name__)
-client = Groq(api_key=settings.GROQ_API_KEY)
-#genai.configure(api_key=settings.GEMINI_API_KEY)
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 def detect_language(text: str) -> tuple[str, float]:
@@ -31,23 +31,19 @@ def detect_language(text: str) -> tuple[str, float]:
 
 def detect_language_with_llm(text: str) -> tuple[str, float]:
     try:
-        response = client.chat.completions.create(
-            #model = genai.GenerativeModel(
+        prompt = f"""You are a language detection expert. 
+Respond with only the ISO 639-1 language code (e.g. 'en', 'fr', 'de', 'hi'). 
+Nothing else.
+
+Detect the language:
+
+{text[:500]}"""
+        
+        response = client.models.generate_content(
             model=settings.LANGUAGE_DETECT_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a language detection expert. "
-                        "Respond with only the ISO 639-1 language code (e.g. 'en', 'fr', 'de', 'hi'). "
-                        "Nothing else."
-                    )
-                },
-                {"role": "user", "content": f"Detect the language:\n\n{text[:500]}"}
-            ],
-            temperature=0
+            contents=prompt
         )
-        lang = response.choices[0].message.content.strip().lower()
+        lang = response.text.strip().lower()
         return lang, 1.0
     except Exception as e:
         logger.error(f"LLM language detection failed: {e}")
@@ -75,35 +71,30 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
     protected, placeholders = protect_req_ids(text)
 
     try:
-        response = client.chat.completions.create(
-            #model = genai.GenerativeModel(
+        prompt = f"""You are a professional human translator. 
+Your task: translate ALL of the user's text into the language identified by ISO 639-1 code '{target_lang}'. 
+
+CRITICAL RULES:
+- Translate EVERY SINGLE WORD and sentence to '{target_lang}' — leave NOTHING in the original language.
+- If the target language is 'en' (English), translate ALL text to English.
+- Output ONLY the fully translated text — no introductions, explanations, notes, or metadata.
+- Preserve the original formatting, line breaks, punctuation, and structure exactly.
+- Preserve proper nouns (company names, person names), brand names, URLs, code snippets, and placeholders as-is.
+- Preserve numbers, dates, phone numbers, email addresses, and reference IDs exactly as-is.
+- Match the tone and register of the source: formal stays formal, casual stays casual.
+- Never add, remove, or paraphrase content — translate meaning faithfully.
+- If a phrase has no direct equivalent, use the most natural culturally appropriate expression.
+- Do not transliterate — write in the native script of the target language.
+
+Translate ALL text now:
+
+{protected}"""
+        
+        response = client.models.generate_content(
             model=settings.LANGUAGE_TRANSLATE_MODEL,
-            max_tokens=2000,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                       f"You are a professional human translator. "
-                       f"Your task: translate ALL of the user's text into the language identified by ISO 639-1 code '{target_lang}'. "
-                       f"\n\nCRITICAL RULES:"
-                       f"\n- Translate EVERY SINGLE WORD and sentence to '{target_lang}' — leave NOTHING in the original language."
-                       f"\n- If the target language is 'en' (English), translate ALL text to English."
-                       f"\n- Output ONLY the fully translated text — no introductions, explanations, notes, or metadata."
-                       f"\n- Preserve the original formatting, line breaks, punctuation, and structure exactly."
-                       f"\n- Preserve proper nouns (company names, person names), brand names, URLs, code snippets, and placeholders as-is."
-                       f"\n- Preserve numbers, dates, phone numbers, email addresses, and reference IDs exactly as-is."
-                       f"\n- Match the tone and register of the source: formal stays formal, casual stays casual."
-                       f"\n- Never add, remove, or paraphrase content — translate meaning faithfully."
-                       f"\n- If a phrase has no direct equivalent, use the most natural culturally appropriate expression."
-                       f"\n- Do not transliterate — write in the native script of the target language."
-                       f"\n\nTranslate ALL text now."
-)
-                },
-                {"role": "user", "content": protected}
-            ],
-            temperature=0
+            contents=prompt
         )
-        translated = response.choices[0].message.content.strip()
+        translated = response.text.strip()
         translated = restore_req_ids(translated, placeholders)
         logger.info(f"[language_service] Text translated to '{target_lang}': {translated}")
         return translated
@@ -179,34 +170,27 @@ def translate_to_language(text: str, target_lang: str) -> str:
 
     for i, chunk in enumerate(chunks):
         try:
-            response = client.chat.completions.create(
-                #model = genai.GenerativeModel(
+            prompt = f"""You are a professional translator specializing in natural, fluent translations. 
+Translate the given HTML to the language with ISO 639-1 code: '{target_lang}'. 
+Use natural, grammatically correct phrasing — do NOT translate word by word. 
+Write as a native speaker would — use proper grammar, natural sentence structure, and culturally appropriate tone. 
+ONLY translate visible text — do NOT add, remove, or generate any new content. 
+Do NOT invent new sections, tables, rows, or data that do not exist in the input. 
+Do NOT change numeric values, dates, IDs, email addresses, or Request IDs. 
+Do NOT change numeric values, dates, email addresses, or any token that looks like __REQID0__, __REQID1__, etc. 
+Preserve ALL HTML tags, attributes, and structure exactly as-is. 
+Do NOT modify, remove, or alter any CSS style attributes — preserve padding, margin, color, font-weight, width, border, and all other style values exactly as-is. 
+Only translate the visible human-readable text inside HTML tags. 
+Do NOT add any explanation, preamble, or commentary before or after the HTML. 
+Return ONLY the translated HTML, nothing else.
+
+{chunk}"""
+            
+            response = client.models.generate_content(
                 model=settings.LANGUAGE_TRANSLATE_MODEL,
-                max_tokens=8000,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            f"You are a professional translator specializing in natural, fluent translations. "
-                            f"Translate the given HTML to the language with ISO 639-1 code: '{target_lang}'. "
-                            f"Use natural, grammatically correct phrasing — do NOT translate word by word. "
-                            f"Write as a native speaker would — use proper grammar, natural sentence structure, and culturally appropriate tone. "
-                            f"ONLY translate visible text — do NOT add, remove, or generate any new content. "
-                            f"Do NOT invent new sections, tables, rows, or data that do not exist in the input. "
-                            f"Do NOT change numeric values, dates, IDs, email addresses, or Request IDs. "
-                            f"Do NOT change numeric values, dates, email addresses, or any token that looks like __REQID0__, __REQID1__, etc. "
-                            f"Preserve ALL HTML tags, attributes, and structure exactly as-is. "
-                            f"Do NOT modify, remove, or alter any CSS style attributes — preserve padding, margin, color, font-weight, width, border, and all other style values exactly as-is. "
-                            f"Only translate the visible human-readable text inside HTML tags. "
-                            f"Do NOT add any explanation, preamble, or commentary before or after the HTML. "
-                            f"Return ONLY the translated HTML, nothing else."
-                        )
-                    },
-                    {"role": "user", "content": chunk}
-                ],
-                temperature=0
+                contents=prompt
             )
-            translated_chunk = response.choices[0].message.content.strip()
+            translated_chunk = response.text.strip()
             translated_chunk = _strip_llm_preamble(translated_chunk)
 
             if not translated_chunk.strip():

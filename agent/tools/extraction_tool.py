@@ -194,7 +194,7 @@ async def extract_shipment_fields(request_id: str) -> dict:
 @tool
 async def extract_missing_field_values(
     request_id:     str,
-    missing_fields: list,
+    missing_fields: list[str],
 ) -> dict:
     """
     Extracts ONLY specific missing fields from a customer reply email.

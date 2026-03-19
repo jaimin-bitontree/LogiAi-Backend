@@ -1,6 +1,6 @@
 import json
 import logging
-from groq import Groq
+from google import genai
 from pydantic import ValidationError
 from config.settings import settings
 from schemas.extraction_schema import ExtractionSchema
@@ -16,9 +16,7 @@ from config.constants import (
 
 logger = logging.getLogger(__name__)
 
-client = Groq(api_key=settings.GROQ_API_KEY)
-
-#genai.configure(api_key=settings.GEMINI_API_KEY)
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 EXTRACTION_MODEL = settings.EXTRACTION_MODEL
 
@@ -147,21 +145,18 @@ def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
     email_content = f"Subject: {subject}\n\nBody:\n{body}"
 
     try:
-        response = client.chat.completions.create(
+        prompt = f"""{EXTRACTION_SYSTEM_PROMPT}
+
+Extract logistics information from this email:
+
+{email_content}"""
+        
+        response = client.models.generate_content(
             model=EXTRACTION_MODEL,
-            messages=[
-                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Extract logistics shipment data:\n\n{email_content}",
-                },
-            ],
-            temperature=0.0,
-            max_tokens=1024,
-            response_format={"type": "json_object"}
+            contents=prompt
         )
 
-        raw_text = response.choices[0].message.content.strip()
+        raw_text = response.text
 
         if not raw_text:
             logger.error("LLM returned empty content")
@@ -278,21 +273,18 @@ Return ONLY a JSON object (not a list) with ALL fields (set to null if not menti
 """.strip()
 
     try:
-        response = client.chat.completions.create(
+        prompt = f"""{focused_prompt}
+
+Extract fields from this reply:
+
+{email_content}"""
+        
+        response = client.models.generate_content(
             model=EXTRACTION_MODEL,
-            messages=[
-                {"role": "system", "content": focused_prompt},
-                {
-                    "role": "user",
-                    "content": f"Extract fields from this reply:\n\n{email_content}",
-                },
-            ],
-            temperature=0.0,
-            max_tokens=1024,
-            response_format={"type": "json_object"}
+            contents=prompt
         )
 
-        raw_text = response.choices[0].message.content
+        raw_text = response.text
         if not raw_text:
             logger.error("LLM returned empty content")
             raise ValueError("LLM returned empty content")

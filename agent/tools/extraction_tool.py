@@ -222,7 +222,7 @@ async def extract_missing_field_values(
     email_body    = shipment.translated_body or shipment.body or ""
 
     # Step 2 — Load existing extracted data from MongoDB
-    existing      = shipment.get("request_data", {})
+    existing      = shipment.request_data or {}
     required_data = dict(existing.get("required", {
         field: None for field in REQUIRED_FIELDS
     }))

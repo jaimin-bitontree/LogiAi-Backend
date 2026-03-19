@@ -1,8 +1,8 @@
 import json
-import os
-from dotenv import load_dotenv
+import logging
 from groq import Groq
 from pydantic import ValidationError
+from config.settings import settings
 from schemas.extraction_schema import ExtractionSchema
 from config.constants import (
     INCOTERMS,
@@ -15,8 +15,6 @@ from config.constants import (
 )
 
 logger = logging.getLogger(__name__)
-
-load_dotenv()
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 

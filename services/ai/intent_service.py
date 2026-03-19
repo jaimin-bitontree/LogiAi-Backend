@@ -1,15 +1,11 @@
 import json
 import logging
 from groq import Groq
-from config.settings import settings
+from config.settings import settings, GROQ_API_KEYS
 from config.constants import EmailIntent
 from models.shipment import IntentResult
 
 logger = logging.getLogger(__name__)
-
-#genai.configure(api_key=settings.GEMINI_API_KEY)
-
-client = Groq(api_key=settings.GROQ_API_KEY_2)
 
 # ===================================================
 # SYSTEM PROMPT
@@ -131,9 +127,10 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
     """
     Classifies intent and extracts request_id from a logistics email.
     Reads translated_subject and translated_body (always English).
+    Tries all available Groq API keys in order until one succeeds.
     """
     subject = (email_subject or "").strip()
-    body = (email_body or "").strip()
+    body    = (email_body    or "").strip()
 
     if not subject and not body:
         return IntentResult(
@@ -143,57 +140,46 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
 
     email_content = f"Subject: {subject}\n\nBody:\n{body}" if subject else f"Body:\n{body}"
 
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": INTENT_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Classify the intent of this email:\n\n{email_content}",
-                },
-            ],
-            temperature=0.1,
-            max_tokens=64,
-        )
+    intent_model = "llama-3.3-70b-versatile"
+    last_error   = None
 
-        raw_text = response.choices[0].message.content.strip()
-        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+    for api_key in GROQ_API_KEYS:
+        try:
+            groq_client = Groq(api_key=api_key)
+            response = groq_client.chat.completions.create(
+                model=intent_model,
+                messages=[
+                    {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": f"Classify the intent of this email:\n\n{email_content}",
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=64,
+            )
 
-    last_error = None
-    for api_key in api_keys:
-        for model in intent_models:
-            try:
+            raw_text = response.choices[0].message.content.strip()
+            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
 
-                #gemini_model = genai.GenerativeModel(
-                #model_name=model,
-                
-                groq_client = Groq(api_key=api_key)
-                response = groq_client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": INTENT_SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": f"Classify the intent of this email:\n\n{email_content}",
-                        },
-                    ],
-                    temperature=0.1,
-                    max_tokens=64,
-                )
+            parsed = json.loads(raw_text)
 
-        return IntentResult(
-            intent=EmailIntent(parsed["intent"]),
-            request_id=parsed.get("request_id"),
-        )
+            return IntentResult(
+                intent=EmailIntent(parsed["intent"]),
+                request_id=parsed.get("request_id"),
+            )
 
-    except json.JSONDecodeError as e:
-        raise ValueError(f"LLM returned invalid JSON: {e}")
-    except KeyError as e:
-        raise ValueError(f"Missing expected field in LLM response: {e}")
-    except ValueError as e:
-        raise ValueError(f"Invalid intent value returned by LLM: {e}")
-    except Exception as e:
-        raise RuntimeError(f"Intent detection failed: {e}")
-    finally:
-        logger.debug(f"[intent_service] detect_intent() | subject: '{subject[:50]}' | body: '{body[:50]}...'")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"LLM returned invalid JSON: {e}")
+        except KeyError as e:
+            raise ValueError(f"Missing expected field in LLM response: {e}")
+        except ValueError as e:
+            raise ValueError(f"Invalid intent value returned by LLM: {e}")
+        except Exception as e:
+            last_error = e
+            logger.warning(f"[intent_service] API key failed, trying next | error={e}")
+            continue
+        finally:
+            logger.debug(f"[intent_service] detect_intent() | subject: '{subject[:50]}' | body: '{body[:50]}...'")
+
+    raise RuntimeError(f"Intent detection failed on all API keys. Last error: {last_error}")

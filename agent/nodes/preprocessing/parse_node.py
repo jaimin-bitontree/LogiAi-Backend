@@ -13,6 +13,7 @@ from utils.email.attachment_helper import extract_text_from_pdf, extract_text_fr
 from utils.cloudinary_service import upload_pdf_to_cloudinary, upload_excel_to_cloudinary
 from agent.state import AgentState
 from config.settings import settings
+from services.ai.language_service import translate_with_llm, detect_language
 from langchain.tools import tool
 import re
 import logging
@@ -38,10 +39,6 @@ def _check_attachment_relevance(page1_text: str, filename: str) -> bool:
 
     Only page 1 (first 1500 chars) is sent to keep token usage low.
     Safe fallback — if LLM fails, returns True to avoid losing data.
-
-    Args:
-        page1_text: Extracted text from page 1 of the attachment
-        filename:   Filename for logging purposes
     """
     if not page1_text or not page1_text.strip():
         logger.warning(
@@ -100,7 +97,7 @@ def _check_attachment_relevance(page1_text: str, filename: str) -> bool:
             f"[parse_node] Relevance check failed for {filename}: {e} "
             f"— defaulting to relevant (safe fallback)"
         )
-        return True  # safe fallback — avoid losing data
+        return True
 
 
 # ─────────────────────────────────────────────────────────────
@@ -163,9 +160,7 @@ async def _process_attachments(raw_attachments: list) -> tuple[list[Attachment],
             full_text = ""
 
         if not full_text:
-            logger.warning(
-                f"[parse_node] No text extracted from {att.filename} — skipping"
-            )
+            logger.warning(f"[parse_node] No text extracted from {att.filename} — skipping")
             continue
 
         # LLM relevance check — page 1 only (first 1500 chars)
@@ -173,11 +168,9 @@ async def _process_attachments(raw_attachments: list) -> tuple[list[Attachment],
 
         if is_relevant:
             att.is_relevant = True
-            att.content     = raw_content
             relevant_items.append((att, raw_content, full_text, is_pdf))
             logger.info(f"[parse_node] Attachment relevant: {att.filename}")
         else:
-            # Irrelevant — not added to DB or Cloudinary at all
             logger.info(
                 f"[parse_node] Attachment irrelevant — not saving to DB or Cloudinary: {att.filename}"
             )
@@ -201,7 +194,6 @@ async def _process_attachments(raw_attachments: list) -> tuple[list[Attachment],
             if result:
                 att.public_id = result["public_id"]
                 att.url       = result["url"]
-                att.content   = None  # clear bytes after upload
                 logger.info(
                     f"[parse_node] Uploaded to Cloudinary | "
                     f"filename={att.filename} | public_id={att.public_id}"
@@ -209,13 +201,11 @@ async def _process_attachments(raw_attachments: list) -> tuple[list[Attachment],
             else:
                 att.public_id = "upload_failed"
                 att.url       = None
-                att.content   = None
                 logger.warning(f"[parse_node] Cloudinary upload failed: {att.filename}")
         except Exception as e:
             logger.error(f"[parse_node] Cloudinary upload exception: {att.filename} — {e}")
             att.public_id = "upload_error"
             att.url       = None
-            att.content   = None
         return att, full_text
 
     # Run all uploads at the same time
@@ -266,7 +256,7 @@ async def parser_node(state: AgentState) -> AgentState:
     raw_attachments = extract_attachments(msg)
 
     # Process attachments — LLM relevance check + parallel Cloudinary upload
-    # Returns ONLY relevant attachments — irrelevant ones are not saved anywhere
+    # Returns ONLY relevant attachments — irrelevant ones not saved anywhere
     attachments, attachment_body = await _process_attachments(raw_attachments)
 
     # Build final body — email body + relevant attachment content only
@@ -284,7 +274,7 @@ async def parser_node(state: AgentState) -> AgentState:
     is_operator = customer_email.lower() == settings.OPERATOR_EMAIL.lower()
 
     # Lookup shipment if operator email (multi-strategy)
-    request_id    = ""
+    request_id     = ""
     shipment_found = False
 
     if is_operator:

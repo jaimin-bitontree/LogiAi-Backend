@@ -4,10 +4,11 @@ import hmac
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
+from config.settings import settings
 
-# Simple token implementation - no external dependencies
-SECRET_KEY = "logiai-super-secret-key-2024"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+# JWT Configuration from environment
+SECRET_KEY = settings.JWT_SECRET_KEY
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.JWT_EXPIRE_MINUTES
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

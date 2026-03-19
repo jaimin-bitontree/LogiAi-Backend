@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET:          str
 
     API_BASE_URL:      str = "http://localhost:8000"
+    JWT_SECRET_KEY:    str
+    JWT_EXPIRE_MINUTES: int = 1440
 
     class Config:
         env_file = ".env"

@@ -11,6 +11,9 @@ The LLM only needs to decide WHICH tool to call, not manage DB.
 
 import logging
 from langchain_groq import ChatGroq
+
+#from langchain_google_genai import ChatGoogleGenerativeAI
+
 from langchain_core.messages import SystemMessage, AIMessage
 
 from config.settings import settings, GROQ_API_KEYS
@@ -45,6 +48,12 @@ MODEL_FALLBACK = [
     "llama-3.3-70b-versatile",   # Only reliable option
 ]
 
+# MODEL_FALLBACK = [
+#  "gemini-1.5-pro",    # Best Gemini model for tool calling
+#    "gemini-1.5-flash",  # Fallback if primary is rate limited
+#]
+ 
+
 def get_llm_with_tools():
     """
     Try to create LLM with tools, falling back through model list if rate limited.
@@ -56,6 +65,12 @@ def get_llm_with_tools():
                 api_key=settings.GROQ_API_KEY,
                 temperature=0.0,
             )
+
+        #try:
+            #llm = ChatGoogleGenerativeAI(
+                #model=model_name,
+                #google_api_key=settings.GEMINI_API_KEY,
+
             llm_with_tools = llm.bind_tools(TOOLS, tool_choice="auto")
             logger.info(f"[agent_node] Using model: {model_name}")
             return llm_with_tools, model_name
@@ -67,6 +82,11 @@ def get_llm_with_tools():
     llm = ChatGroq(
         model=MODEL_FALLBACK[-1],
         api_key=settings.GROQ_API_KEY,
+
+    #llm = ChatGoogleGenerativeAI(
+                    #model=model_name,
+                    #google_api_key=settings.GEMINI_API_KEY,
+
         temperature=0.0,
     )
     return llm.bind_tools(TOOLS, tool_choice="auto"), MODEL_FALLBACK[-1]
@@ -170,6 +190,8 @@ def call_agent(state: dict) -> dict:
                     messages = [system_msg] + state["messages"]
                     
                     llm = ChatGroq(
+
+                    #llm = ChatGoogleGenerativeAI(
                         model=model_name,
                         api_key=api_key,
                         temperature=0.0,

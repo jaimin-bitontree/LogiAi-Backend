@@ -6,6 +6,9 @@ from config.constants import EmailIntent
 from models.shipment import IntentResult
 
 logger = logging.getLogger(__name__)
+
+#genai.configure(api_key=settings.GEMINI_API_KEY)
+
 client = Groq(api_key=settings.GROQ_API_KEY_2)
 
 # ===================================================
@@ -157,7 +160,27 @@ def detect_intent(email_subject: str, email_body: str) -> IntentResult:
         raw_text = response.choices[0].message.content.strip()
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
 
-        parsed = json.loads(raw_text)
+    last_error = None
+    for api_key in api_keys:
+        for model in intent_models:
+            try:
+
+                #gemini_model = genai.GenerativeModel(
+                #model_name=model,
+                
+                groq_client = Groq(api_key=api_key)
+                response = groq_client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": f"Classify the intent of this email:\n\n{email_content}",
+                        },
+                    ],
+                    temperature=0.1,
+                    max_tokens=64,
+                )
 
         return IntentResult(
             intent=EmailIntent(parsed["intent"]),

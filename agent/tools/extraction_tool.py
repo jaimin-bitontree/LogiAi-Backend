@@ -5,6 +5,7 @@ Optimized tool-calling:
 - Tools fetch the email content directly from MongoDB using request_id.
 - No large body strings are passed to the LLM 'Brain'.
 - Saves memory, tokens, and improves reliability for large emails.
+- PDF/Excel Cloudinary upload is handled in parse_node (not here).
 """
 
 import logging
@@ -130,7 +131,7 @@ async def extract_shipment_fields(request_id: str) -> dict:
         missing_fields: list of required fields still needed.
     """
 
-    # Step 1 — Read email body from MongoDB (avoiding LLM context bloat)
+    # Step 1 — Read email body from MongoDB
     shipment = await get_shipment_by_request_id(request_id)
     if not shipment:
         logger.error("[extraction_tool] Shipment not found: %s", request_id)
@@ -141,7 +142,7 @@ async def extract_shipment_fields(request_id: str) -> dict:
 
     logger.info("[extraction_tool] Extracting all fields for %s", request_id)
 
-    # Step 2 — Extract ALL fields via LLM (still uses configured 8B model internally)
+    # Step 2 — Extract ALL fields via LLM
     try:
         schema      = extract_fields(email_subject, email_body)
         schema_dict = schema.model_dump()
@@ -169,11 +170,10 @@ async def extract_shipment_fields(request_id: str) -> dict:
     validation = _compute_validation(required_data)
 
     # Step 5 — Save results to MongoDB
-    # This keeps DB in sync so email tools see the latest data
     await update_shipment(request_id, {
-        "request_data": request_data,
+        "request_data":      request_data,
         "validation_result": validation,
-        "status": "NEW",
+        "status":            "NEW",
     })
 
     _log_extraction_result(email_subject, schema_dict, validation)
@@ -219,7 +219,7 @@ async def extract_missing_field_values(
     email_subject = shipment.get("translated_subject") or shipment.get("subject", "")
     email_body    = shipment.get("translated_body")    or shipment.get("body", "")
 
-    # Step 2 — Load existing extracted data from MongoDB to ensure merge accuracy
+    # Step 2 — Load existing extracted data from MongoDB
     existing      = shipment.get("request_data", {})
     required_data = dict(existing.get("required", {
         field: None for field in REQUIRED_FIELDS
@@ -254,7 +254,7 @@ async def extract_missing_field_values(
 
     # Step 6 — Save merged data back to MongoDB
     await update_shipment(request_id, {
-        "request_data": request_data,
+        "request_data":      request_data,
         "validation_result": validation,
     })
 

@@ -204,8 +204,6 @@ def route_after_intent(state: AgentState) -> str:
         logger.info("[workflow] cancellation detected- routing directly to context_builder (skipping reqid)")
         return "context_builder"
     else:
-        # new_request, missing_information, status_inquiry, confirmation, cancellation
-        # all go through reqid so the node can look up the shipment by conversation_id or request_id
         return "reqid"
 
 builder.add_conditional_edges(

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from services.shipment.shipment_service import find_by_request_id, find_by_thread_id, list_shipments
 from services.notification.notification_service import send_quote_notification
 from models.shipment import Shipment
+from utils.auth.jwt_service import verify_auth_token
 from typing import List, Optional
 import logging
 
@@ -11,7 +12,8 @@ router = APIRouter(prefix="/shipments", tags=["shipments"])
 
 @router.get("/", response_model=List[Shipment])
 async def get_all_shipments(
-    status: Optional[str] = Query(None, description="Filter by shipment status")
+    status: Optional[str] = Query(None, description="Filter by shipment status"),
+    token: dict = Depends(verify_auth_token)
 ):
     """
     Get all shipments with optional status filtering.
@@ -42,7 +44,10 @@ async def get_shipment_by_thread_id(thread_id: str):
 
 
 @router.post("/{request_id}/notify")
-async def send_notification(request_id: str):
+async def send_notification(
+    request_id: str,
+    token: dict = Depends(verify_auth_token)
+):
     """Send notification email for a quoted shipment"""
     try:
         # Find shipment by request_id

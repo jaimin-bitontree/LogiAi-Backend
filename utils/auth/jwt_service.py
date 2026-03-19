@@ -71,3 +71,26 @@ def verify_token(token: str) -> Optional[dict]:
 def get_token_expiry_seconds() -> int:
     """Get token expiry time in seconds"""
     return ACCESS_TOKEN_EXPIRE_MINUTES * 60
+
+
+from fastapi import Header, HTTPException
+
+
+async def verify_auth_token(authorization: str = Header(...)):
+    """Dependency to verify JWT token from Authorization header"""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail={
+            "success": False,
+            "message": "Invalid token format. Use: Bearer <token>"
+        })
+    
+    token = authorization.replace("Bearer ", "")
+    payload = verify_token(token)
+    
+    if not payload:
+        raise HTTPException(status_code=401, detail={
+            "success": False,
+            "message": "Invalid or expired token"
+        })
+    
+    return payload

@@ -13,7 +13,7 @@ from langchain_core.tools import tool
 
 from config.constants              import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from services.ai.extraction_service import extract_fields, extract_missing_fields
-from services.shipment.shipment_service import update_shipment, get_shipment_by_request_id
+from services.shipment.shipment_service import update_shipment, find_by_request_id
 
 logger = logging.getLogger(__name__)
 
@@ -133,14 +133,14 @@ async def extract_shipment_fields(request_id: str) -> dict:
         missing_fields: list of required fields still needed.
     """
 
-    # Step 1 — Read email body from MongoDB
-    shipment = await get_shipment_by_request_id(request_id)
+    # Step 1 — Read email body from MongoDB (avoiding LLM context bloat)
+    shipment = await find_by_request_id(request_id)
     if not shipment:
         logger.error("[extraction_tool] Shipment not found: %s", request_id)
         return {"is_valid": False, "missing_fields": list(REQUIRED_FIELDS)}
 
-    email_subject = shipment.get("translated_subject") or shipment.get("subject", "")
-    email_body    = shipment.get("translated_body")    or shipment.get("body", "")
+    email_subject = shipment.translated_subject or shipment.subject or ""
+    email_body    = shipment.translated_body or shipment.body or ""
 
     logger.info("[extraction_tool] Extracting all fields for %s", request_id)
 
@@ -194,7 +194,7 @@ async def extract_shipment_fields(request_id: str) -> dict:
 @tool
 async def extract_missing_field_values(
     request_id:     str,
-    missing_fields: list,
+    missing_fields: list[str],
 ) -> dict:
     """
     Extracts ONLY specific missing fields from a customer reply email.
@@ -213,16 +213,16 @@ async def extract_missing_field_values(
     """
 
     # Step 1 — Read reply email and existing data from MongoDB
-    shipment = await get_shipment_by_request_id(request_id)
+    shipment = await find_by_request_id(request_id)
     if not shipment:
         logger.error("[extraction_tool] Shipment not found: %s", request_id)
         return {"is_valid": False, "still_missing": missing_fields}
 
-    email_subject = shipment.get("translated_subject") or shipment.get("subject", "")
-    email_body    = shipment.get("translated_body")    or shipment.get("body", "")
+    email_subject = shipment.translated_subject or shipment.subject or ""
+    email_body    = shipment.translated_body or shipment.body or ""
 
     # Step 2 — Load existing extracted data from MongoDB
-    existing      = shipment.get("request_data", {})
+    existing      = shipment.request_data or {}
     required_data = dict(existing.get("required", {
         field: None for field in REQUIRED_FIELDS
     }))

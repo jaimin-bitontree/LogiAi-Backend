@@ -12,7 +12,7 @@ from services.ai.pricing_service import extract_pricing_data
 from services.ai.language_service import translate_to_language
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import get_shipment_by_request_id, set_pricing_details, log_outgoing_message
+from services.shipment.shipment_service import find_by_request_id, set_pricing_details, log_outgoing_message
 from utils.language_helpers import get_detected_lang
 
 logger = logging.getLogger(__name__)
@@ -58,12 +58,12 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
             return {"success": False, "error": "Failed to extract pricing data from email"}
 
         # 2. Get shipment from DB
-        shipment_doc = await get_shipment_by_request_id(request_id)
+        shipment_doc = await find_by_request_id(request_id)
         if not shipment_doc:
             return {"success": False, "error": f"Shipment {request_id} not found"}
 
-        customer_email = shipment_doc["customer_email"]
-        request_data   = shipment_doc.get("request_data", {})
+        customer_email = shipment_doc.customer_email
+        request_data   = shipment_doc.request_data or {}
         customer_name  = (
             request_data.get("required", {}).get("customer_name") or
             request_data.get("customer_name") or
@@ -100,9 +100,9 @@ async def calculate_and_send_pricing(request_id: str, pricing_email_body: str) -
         )
 
         # 8. Merge with existing pricing if any
-        existing_pricing_list = shipment_doc.get("pricing_details", [])
+        existing_pricing_list = shipment_doc.pricing_details or []
         if existing_pricing_list:
-            pricing_data = merge_pricing_data(PricingSchema(**existing_pricing_list[0]), pricing_data)
+            pricing_data = merge_pricing_data(existing_pricing_list[0], pricing_data)
 
         # 9. Log + update DB
         await log_outgoing_message(

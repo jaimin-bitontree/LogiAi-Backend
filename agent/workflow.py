@@ -146,9 +146,10 @@ def route_after_intent(state: AgentState) -> str:
     request_id = state.get("request_id", "")
     conversation_id = state.get("conversation_id", "")
     customer_email = state.get("customer_email", "")
+    is_operator = state.get("is_operator", False)
     
     # Check for all intents EXCEPT new_shipment_request
-    if intent != "new_request":
+    if intent not in ["new_request","spam"]:
         # Check if BOTH request_id AND conversation_id are null
         request_id_missing = not request_id or request_id.lower() in ["null", "none", "", "unknown"]
         conversation_id_missing = not conversation_id or conversation_id.lower() in ["null", "none", "", "unknown"]
@@ -156,9 +157,12 @@ def route_after_intent(state: AgentState) -> str:
         if request_id_missing and conversation_id_missing:
             logger.warning(f"[workflow] Intent '{intent}' but no context (req_id + conversation_id both null)")
             
-            # Send guidance email
+            # Skip sending email if this is an operator (already handled in parse_node)
+            if is_operator:
+                logger.info(f"[workflow] Operator email without context - already handled in parse_node, stopping workflow")
+                return END
             
-            
+            # Send guidance email to customer
             guidance_html = build_email(
                 email_type="missing_info",
                 customer_name=customer_email,
@@ -193,9 +197,13 @@ def route_after_intent(state: AgentState) -> str:
     elif intent == "operator_pricing":
         logger.info("[workflow] Operator pricing detected - routing directly to context_builder (skipping reqid)")
         return "context_builder"
+    elif intent == "confirmation":
+        logger.info("[workflow] confirmation detected- routing directly to context_builder (skipping reqid)")
+        return "context_builder"
+    elif intent == "cancellation":
+        logger.info("[workflow] cancellation detected- routing directly to context_builder (skipping reqid)")
+        return "context_builder"
     else:
-        # new_request, missing_information, status_inquiry, confirmation, cancellation
-        # all go through reqid so the node can look up the shipment by conversation_id or request_id
         return "reqid"
 
 builder.add_conditional_edges(
@@ -232,11 +240,6 @@ def should_continue(state: AgentState) -> str:
             "Email sent to",
             "Both emails sent",
             "Missing info email sent",
-            "Status update sent",
-            "Confirmation email sent",
-            "Cancellation email sent",
-            "Pricing quote sent",
-            "Spam email handled",
             "✅ Pricing quote sent",
             "✅ Status update sent", 
             "✅ Confirmation email sent",

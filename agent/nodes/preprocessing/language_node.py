@@ -1,7 +1,7 @@
 import logging
 from agent.state import AgentState
 from models.shipment import LanguageMetadata
-from services.ai.language_service import detect_language, translate_with_llm
+from services.ai.language_service import detect_language, translate_text_to_language
 from utils.language_helpers import MIN_BODY_LEN_FOR_DETECTION
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def language_node(state: AgentState) -> dict:
         translated_body = body
         body_translated = False
     else:
-        translated_body = translate_with_llm(body)
+        translated_body = translate_text_to_language(body, "en")
         body_translated = True
 
     # Step 4: Translate subject if not English
@@ -55,7 +55,7 @@ def language_node(state: AgentState) -> dict:
         translated_subject = subject
         subject_translated = False
     else:
-        translated_subject = translate_with_llm(subject) if subject else ""
+        translated_subject = translate_text_to_language(subject, "en") if subject else ""
         subject_translated = bool(subject)
 
     logger.info(f"[language_node] Final → detected_language={body_lang} | body_translated={body_translated}")

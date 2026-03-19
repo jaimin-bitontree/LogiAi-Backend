@@ -1,7 +1,7 @@
 import asyncio
 from email import policy
 from email.parser import BytesParser
-from groq import Groq
+from google import genai
 from models.shipment import Attachment
 from utils.email.email_utils import (
     extract_email_address,
@@ -13,19 +13,25 @@ from utils.email.attachment_helper import extract_text_from_pdf, extract_text_fr
 from utils.cloudinary_service import upload_pdf_to_cloudinary, upload_excel_to_cloudinary
 from agent.state import AgentState
 from config.settings import settings
-from services.ai.language_service import translate_with_llm, detect_language
+from services.ai.language_service import translate_text_to_language, detect_language
 from langchain.tools import tool
 import re
 import logging
 from models.shipment import Message
-from services.shipment.shipment_service import push_message_log
+from services.shipment.shipment_service import (
+    push_message_log,
+    find_by_any_message_id,
+    find_by_request_id
+    )
 from datetime import datetime
+from services.email.email_sender import send_email
+from services.email.email_template import build_email
 
 
 logger = logging.getLogger(__name__)
 
-# Groq client for attachment relevance check
-_groq_client = Groq(api_key=settings.GROQ_API_KEY)
+# Gemini client for attachment relevance check
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -48,42 +54,32 @@ def _check_attachment_relevance(page1_text: str, filename: str) -> bool:
         return False
 
     try:
-        response = _groq_client.chat.completions.create(
+        prompt = f"""You are a logistics document classifier. 
+You will receive text from a document. 
+Your job is to decide if it contains shipment-related information. 
+
+Shipment-related information includes ANY of these: 
+origin city, origin country, destination city, destination country, 
+cargo weight, volume, quantity, package type, container type, 
+shipment type, transport mode, incoterm, customer name, 
+contact person, description of goods, dangerous goods, stackable, 
+freight details, logistics data, packing list, bill of lading, 
+commercial invoice with shipping details. 
+
+Reply with ONLY one word: YES or NO. 
+YES = document contains shipment-related data. 
+NO = document has no shipment-related data.
+
+Does this document contain shipment-related information?
+
+{page1_text[:1500]}"""
+        
+        response = client.models.generate_content(
             model=settings.LANGUAGE_DETECT_MODEL,
-            temperature=0,
-            max_tokens=10,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a logistics document classifier. "
-                        "You will receive text from a document. "
-                        "Your job is to decide if it contains shipment-related information. "
-                        "\n\n"
-                        "Shipment-related information includes ANY of these: "
-                        "origin city, origin country, destination city, destination country, "
-                        "cargo weight, volume, quantity, package type, container type, "
-                        "shipment type, transport mode, incoterm, customer name, "
-                        "contact person, description of goods, dangerous goods, stackable, "
-                        "freight details, logistics data, packing list, bill of lading, "
-                        "commercial invoice with shipping details. "
-                        "\n\n"
-                        "Reply with ONLY one word: YES or NO. "
-                        "YES = document contains shipment-related data. "
-                        "NO = document has no shipment-related data."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Does this document contain shipment-related information?\n\n"
-                        f"{page1_text[:1500]}"
-                    )
-                }
-            ]
+            contents=prompt
         )
 
-        answer      = response.choices[0].message.content.strip().upper()
+        answer      = response.text.strip().upper()
         is_relevant = answer.startswith("YES")
 
         logger.info(
@@ -284,7 +280,6 @@ async def parser_node(state: AgentState) -> AgentState:
 
         # Strategy 1: Lookup by In-Reply-To header
         if parent_message_id:
-            from services.shipment.shipment_service import find_by_any_message_id
             shipment = await find_by_any_message_id(parent_message_id)
 
             if shipment:
@@ -317,21 +312,21 @@ async def parser_node(state: AgentState) -> AgentState:
                 )
 
                 state.update({
-                    "message_ids":        message_ids,
-                    "last_message_id":    message_id,
-                    "request_id":         shipment.request_id,
-                    "customer_email":     shipment.customer_email,
-                    "request_data":       shipment.request_data,
-                    "status":             shipment.status,
-                    "pricing_details":    shipment.pricing_details,
-                    "is_operator":        is_operator,
-                    "shipment_found":     shipment_found,
-                    "subject":            subject,
-                    "body":               updated_body,
-                    "translated_subject": subject,
-                    "translated_body":    translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
-                    "attachments":        attachments,
-                })
+                        "message_ids": message_ids,
+                        "last_message_id": message_id,
+                        "request_id":shipment.request_id,
+                        "customer_email":shipment.customer_email,
+                        "request_data":shipment.request_data,
+                        "status":shipment.status,
+                        "pricing_details":shipment.pricing_details,
+                        "is_operator": is_operator,
+                        "shipment_found": shipment_found,
+                        "subject": subject,
+                        "body": updated_body,
+                        "translated_subject": subject,
+                        "translated_body": translate_text_to_language(updated_body, "en") if detect_language(updated_body[:500])[0] != "en" else updated_body,
+                        "attachments": attachments,
+                    })
                 return state
 
         # Strategy 2: Extract request_id from subject line
@@ -342,8 +337,7 @@ async def parser_node(state: AgentState) -> AgentState:
             if match:
                 request_id = match.group(0)
                 logger.info(f"[parse_node] ✅ Extracted request_id from subject: {request_id}")
-
-                from services.shipment.shipment_service import find_by_request_id
+                
                 shipment = await find_by_request_id(request_id)
 
                 if shipment:
@@ -363,8 +357,8 @@ async def parser_node(state: AgentState) -> AgentState:
                         "subject":            subject,
                         "body":               updated_body,
                         "translated_subject": subject,
-                        "translated_body":    translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
-                        "attachments":        attachments,
+                        "translated_body": translate_text_to_language(updated_body, "en") if detect_language(updated_body[:500])[0] != "en" else updated_body,
+                        "attachments": attachments,
                     })
                     return state
                 else:
@@ -378,8 +372,7 @@ async def parser_node(state: AgentState) -> AgentState:
             if match:
                 request_id = match.group(0)
                 logger.info(f"[parse_node] ✅ Extracted request_id from body: {request_id}")
-
-                from services.shipment.shipment_service import find_by_request_id
+                
                 shipment = await find_by_request_id(request_id)
 
                 if shipment:
@@ -399,8 +392,8 @@ async def parser_node(state: AgentState) -> AgentState:
                         "subject":            subject,
                         "body":               updated_body,
                         "translated_subject": subject,
-                        "translated_body":    translate_with_llm(updated_body) if detect_language(updated_body[:500])[0] != "en" else updated_body,
-                        "attachments":        attachments,
+                        "translated_body": translate_text_to_language(updated_body, "en") if detect_language(updated_body[:500])[0] != "en" else updated_body,
+                        "attachments": attachments,
                     })
                     return state
                 else:
@@ -417,9 +410,8 @@ async def parser_node(state: AgentState) -> AgentState:
             in_reply_to_missing = not parent_message_id or parent_message_id == ""
 
             if request_id_missing and in_reply_to_missing:
-                from services.email.email_sender import send_email
-                from services.email.email_template import build_email
-
+                # Send guidance email to operator
+                
                 operator_guidance_html = build_email(
                     email_type="missing_info",
                     customer_name="Operator",
@@ -433,14 +425,23 @@ async def parser_node(state: AgentState) -> AgentState:
                 )
 
                 msg_id = send_email(
-                    to=settings.OPERATOR_EMAIL,
+                    to=customer_email,  # Send to the operator who sent the email
                     subject="Request ID Required - Cannot Process Pricing",
                     body_html=operator_guidance_html,
                     request_id="UNKNOWN"
                 )
 
                 logger.info(f"[parse_node] Guidance email sent to operator | msg_id={msg_id}")
+                logger.info(f"[parse_node] Stopping workflow - operator email cannot be matched")
+                
+                # Set flag to stop workflow and update minimal state
                 state["operator_guidance_sent"] = True
+                state["is_operator"] = True  
+                state["customer_email"] = customer_email
+                state["subject"] = subject
+                state["body"] = updated_body
+                
+                return state
 
     # Update state — only relevant attachments saved
     state.update({

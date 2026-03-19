@@ -14,9 +14,9 @@ from config.constants import REQUIRED_FIELDS, OPTIONAL_FIELDS
 from models.shipment import Message
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment, push_message_log,find_by_request_id,find_by_any_message_id
-from db.client import get_db
-
+from services.shipment.shipment_service import update_shipment, find_by_request_id, find_by_any_message_id, log_outgoing_message , push_message_log
+from services.ai.language_service import translate_to_language, translate_text_to_language
+from utils.language_helpers import get_detected_lang
 
 logger = logging.getLogger(__name__)
 
@@ -36,101 +36,90 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
     """
     try:
         logger.info(f"[confirmation_tools] Processing confirmation for {request_id}")
-
-        # Check if BOTH request_id AND conversation_id are missing
-        if (not request_id or request_id.lower() in ["null", "none", "", "unknown"]) and \
-           (not conversation_id or conversation_id.lower() in ["null", "none", "", "unknown"]):
-            logger.warning(f"[confirmation_tools] No request ID provided by {customer_email}")
-            
-            # Send email asking for request ID
-            request_id_email_html = build_email(
-                email_type="missing_info",
-                customer_name=customer_name,
-                request_id="UNKNOWN",
-                missing_fields=["request_id"],
-                message=(
-                    "We received your confirmation request, but we need your Request ID "
-                    "to process it. Please reply with your Request ID (format: REQ-YYYY-XXXXXXXXXXXX) "
-                    "that was provided in your original pricing email."
-                ),
-                next_steps=[
-                    "Check your previous emails from LogiAI for your Request ID",
-                    "Reply to this email with your Request ID",
-                    "If you can't find it, forward your original pricing email to us"
-                ]
-            )
-            
-            subject = "Request ID Required for Shipment Confirmation"
-            
-            msg_id = send_email(
-                to=customer_email,
-                subject=subject,
-                body_html=request_id_email_html,
-                request_id="UNKNOWN"
-            )
-            
-            request_id_message_log = Message(
-                message_id=msg_id,
-                sender_email=settings.GMAIL_ADDRESS,
-                sender_type="system",
-                direction="outgoing",
-                subject=subject,
-                body="Request ID required email sent to customer.",
-                received_at=datetime.utcnow()
-            )
-
-            # Note: We can't push to shipment log without request_id, so we just return
-            logger.info(f"[confirmation_tools] Request ID needed email sent to {customer_email}")
-            
-            return f"✅ Request ID required email sent to {customer_email} | msg_id={msg_id} | status=REQUEST_ID_NEEDED"
-
-        # Fetch shipment from DB
-        shipment = None
         
-        # If request_id is null/missing, try conversation_id
-        if not request_id or request_id.lower() in ["null", "none", "", "unknown"]:
-            if conversation_id and conversation_id.lower() not in ["null", "none", "", "unknown"]:
-                shipment = await find_by_any_message_id(conversation_id)
-                if shipment:
-                    request_id = shipment.request_id  # Update request_id
-                    logger.info(f"[confirmation_tools] Found by conversation_id: {request_id}")
-        else:
-            # request_id exists, use it
+        # 1. Fetch shipment from DB immediately if either ID is provided
+        shipment = None
+        if request_id and request_id.lower() not in ["null", "none", "", "unknown"]:
             shipment = await find_by_request_id(request_id)
             logger.info(f"[confirmation_tools] Found by request_id: {request_id}")
+        elif conversation_id and conversation_id.lower() not in ["null", "none", "", "unknown"]:
+            shipment = await find_by_any_message_id(conversation_id)
+            if shipment:
+                request_id = shipment.request_id  # Update request_id
+                logger.info(f"[confirmation_tools] Found by conversation_id: {request_id}")
 
+        # 2. Get detected_lang securely
+        detected_lang = get_detected_lang(shipment) if shipment else "en"
+
+        # 3. Handle missing shipment scenario
         if not shipment:
-            logger.warning(f"[confirmation_tools] Shipment {request_id} not found")
-            
-            # Enhanced error message with guidance
-            guidance_html = build_email(
-                email_type="missing_info",
-                customer_name=customer_name,
-                request_id=request_id,
-                missing_fields=[],
-                message=(
-                    f"We couldn't find a shipment with Request ID: {request_id}. "
-                    "Please check your Request ID and try again."
-                ),
-                next_steps=[
-                    "Verify the Request ID format (REQ-YYYY-XXXXXXXXXXXX)",
-                    "Check your previous emails from LogiAI",
-                    "Contact our support team if you need assistance"
-                ]
-            )
-            
-            error_subject = f"Shipment Not Found - {request_id}"
-            error_msg_id = send_email(
-                to=customer_email,
-                subject=error_subject,
-                body_html=guidance_html,
-                request_id=request_id
-            )
-            
-            return f"❌ Shipment {request_id} not found | guidance_email_sent | msg_id={error_msg_id}"
+            # Check if we didn't even have IDs to begin with
+            if (not request_id or request_id.lower() in ["null", "none", "", "unknown"]) and \
+               (not conversation_id or conversation_id.lower() in ["null", "none", "", "unknown"]):
+                logger.warning(f"[confirmation_tools] No request ID provided by {customer_email}")
+                
+                request_id_email_html = build_email(
+                    email_type="missing_info",
+                    customer_name=customer_name,
+                    request_id="UNKNOWN",
+                    missing_fields=["request_id"],
+                    message=(
+                        "We received your confirmation request, but we need your Request ID "
+                        "to process it. Please reply with your Request ID (format: REQ-YYYY-XXXXXXXXXXXX) "
+                        "that was provided in your original pricing email."
+                    ),
+                    next_steps=[
+                        "Check your previous emails from LogiAI for your Request ID",
+                        "Reply to this email with your Request ID",
+                        "If you can't find it, forward your original pricing email to us"
+                    ]
+                )
+                
+                subject = "Request ID Required for Shipment Confirmation"
+                
+                msg_id = send_email(
+                    to=customer_email,
+                    subject=subject,
+                    body_html=request_id_email_html,
+                    request_id="UNKNOWN"
+                )
+                
+                logger.info(f"[confirmation_tools] Request ID needed email sent to {customer_email}")
+                return f"✅ Request ID required email sent to {customer_email} | msg_id={msg_id} | status=REQUEST_ID_NEEDED"
 
-        current_status = shipment.status
-        request_data = shipment.request_data
+            else:
+                # We had an ID, but shipment not found
+                logger.warning(f"[confirmation_tools] Shipment {request_id} not found")
+                
+                guidance_html = build_email(
+                    email_type="missing_info",
+                    customer_name=customer_name,
+                    request_id=request_id,
+                    missing_fields=[],
+                    message=(
+                        f"We couldn't find a shipment with Request ID: {request_id}. "
+                        "Please check your Request ID and try again."
+                    ),
+                    next_steps=[
+                        "Verify the Request ID format (REQ-YYYY-XXXXXXXXXXXX)",
+                        "Check your previous emails from LogiAI",
+                        "Contact our support team if you need assistance"
+                    ]
+                )
+                
+                error_subject = f"Shipment Not Found - {request_id}"
+                
+                error_msg_id = send_email(
+                    to=customer_email,
+                    subject=error_subject,
+                    body_html=guidance_html,
+                    request_id=request_id
+                )
+                
+                return f"❌ Shipment {request_id} not found | guidance_email_sent | msg_id={error_msg_id}"
+
+        current_status = shipment.status or ""
+        request_data = shipment.request_data or {}
         subject = shipment.subject or "Your Shipment"
 
         logger.info(f"[confirmation_tools] Found shipment | status={current_status}")
@@ -184,8 +173,49 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             return f"✅ Pricing reminder sent to operator | msg_id={reminder_msg_id} | status=PRICING_PENDING"
 
         # Handle non-QUOTED status
+        # if current_status != "QUOTED":
+        #     return f"❌ Cannot confirm shipment with status '{current_status}', expected 'QUOTED'"
+
+        if current_status == "CONFIRMED":
+            already_confirmed_html = build_email(
+                email_type="status",
+                customer_name=customer_name,
+                request_id=request_id,
+                request_data=request_data,
+                all_fields=all_fields,
+                status="CONFIRMED",
+                message="Your shipment is already confirmed and currently in process. Our team is handling your logistics arrangements.",
+            )
+            already_subject = f"Shipment Already Confirmed - {request_id}"
+ 
+            if detected_lang != "en":
+                already_confirmed_html = translate_to_language(already_confirmed_html, detected_lang)
+                already_subject = translate_text_to_language(already_subject, detected_lang)
+ 
+            msg_id = send_email(to=customer_email, subject=already_subject, body_html=already_confirmed_html, request_id=request_id)
+            await log_outgoing_message(request_id=request_id, message_id=msg_id, subject=already_subject, body="Already confirmed email sent to customer.", status="CONFIRMED")
+            return f"✅ Already confirmed email sent to {customer_email} | msg_id={msg_id} | status=CONFIRMED"
+ 
+# Handle any other non-QUOTED status
         if current_status != "QUOTED":
-            return f"❌ Cannot confirm shipment with status '{current_status}', expected 'QUOTED'"
+            not_quoted_html = build_email(
+                email_type="status",
+                customer_name=customer_name,
+                request_id=request_id,
+                request_data=request_data,
+                all_fields=all_fields,
+                status=current_status,
+                message="Confirmation is only allowed after a quotation has been sent. Please wait until you receive a pricing quote before confirming.",
+            )
+            not_quoted_subject = f"Confirmation Not Available Yet - {request_id}"
+ 
+            if detected_lang != "en":
+                not_quoted_html = translate_to_language(not_quoted_html, detected_lang)
+                not_quoted_subject = translate_text_to_language(not_quoted_subject, detected_lang)
+ 
+            msg_id = send_email(to=customer_email, subject=not_quoted_subject, body_html=not_quoted_html, request_id=request_id)
+            await log_outgoing_message(request_id=request_id, message_id=msg_id, subject=not_quoted_subject, body="Confirmation not available — quotation not yet sent.", status=current_status)
+            return f"✅ Not-quoted email sent to {customer_email} | msg_id={msg_id} | status={current_status}"
 
         # Process confirmation for QUOTED shipment
         
@@ -253,6 +283,12 @@ async def process_shipment_confirmation(request_id: str, customer_email: str, cu
             ]
         )
         customer_subject = f"Re: {subject} -- Shipment Confirmed"
+
+        # Language translation for customer confirmation email
+        if detected_lang != "en":
+            logger.info(f"[confirmation_tools] Translating confirmation email to '{detected_lang}' for {customer_email}")
+            customer_html = translate_to_language(customer_html, detected_lang)
+            customer_subject = translate_text_to_language(customer_subject, detected_lang)
 
         customer_msg_id = send_email(
             to=customer_email,

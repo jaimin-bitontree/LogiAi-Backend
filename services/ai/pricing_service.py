@@ -1,13 +1,12 @@
 import json
 import logging
 from typing import Optional
-from groq import Groq
+from google import genai
 from config.settings import settings
 from models.shipment import PricingSchema
 
 logger = logging.getLogger(__name__)
-#genai.configure(api_key=settings.GEMINI_API_KEY)
-client = Groq(api_key=settings.GROQ_API_KEY)
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 PRICING_SYSTEM_PROMPT = """
 You are a logistics pricing assistant. Extract detailed freight quotation details from operator emails.
@@ -153,19 +152,22 @@ def extract_pricing_data(email_body: str) -> tuple[Optional[PricingSchema], Opti
         logger.debug(f"[pricing_service] extract_pricing_data called with {len(email_body)} chars")
         logger.debug(f"[pricing_service] Using model: {settings.EXTRACTION_MODEL}")
         
-        response = client.chat.completions.create(
-          #model = genai.GenerativeModel(
+        prompt = f"""{PRICING_SYSTEM_PROMPT}
+
+Extract pricing and Request ID from this email:
+
+{email_body}"""
+        
+        response = client.models.generate_content(
             model=settings.EXTRACTION_MODEL,
-            messages=[
-                {"role": "system", "content": PRICING_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Extract pricing and Request ID from this email:\n\n{email_body}"}
-            ],
-            temperature=0,
-            response_format={"type": "json_object"}
+            contents=prompt
         )
 
-        content = response.choices[0].message.content
+        content = response.text
         logger.debug(f"[pricing_service] LLM raw response: {content[:500]}...")
+        
+        # Clean markdown formatting
+        content = content.replace("```json", "").replace("```", "").strip()
         
         data = json.loads(content)
         request_id = data.pop("request_id", None)

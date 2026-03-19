@@ -28,7 +28,7 @@ def fetch_unread_emails() -> list[bytes]:
     """
     Fetch unread emails from Gmail.
     Returns:
-        List of raw RFC822 email bytes.
+        List of raw email bytes.
     """
 
     raw_emails: list[bytes] = []
@@ -52,7 +52,7 @@ def fetch_unread_emails() -> list[bytes]:
         logger.info(f"Found {len(ids)} unread email(s).")
 
         for email_id in ids:
-            status, data = mail.fetch(email_id, "(RFC822)")
+            status, data = mail.fetch(email_id, "(BODY.PEEK[])")
 
             if status != "OK":
                 logger.warning(f"Failed to fetch email ID {email_id}")
@@ -69,8 +69,7 @@ def fetch_unread_emails() -> list[bytes]:
             if raw_email:
                 raw_emails.append(raw_email)
 
-                # Mark as read
-                mail.store(email_id, "+FLAGS", "\\Seen")
+                
 
     except Exception as e:
         logger.error(f"❌ Gmail receiver error: {e}")

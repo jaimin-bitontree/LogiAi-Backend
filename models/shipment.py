@@ -93,7 +93,6 @@ class ValidationResult(BaseModel):
 class Shipment(BaseModel):
     request_id: str
     thread_id: Optional[str] = None  # Conversation root (FIRST message, never changes)
-    conversation_id: Optional[str] = None
     last_message_id: Optional[str] = None  # Current head (LATEST message, always updated)
     customer_email: str
     subject: Optional[str] = None
@@ -109,6 +108,5 @@ class Shipment(BaseModel):
     attachments: List[Attachment] = Field(default_factory=list)
     messages: List[Message] = Field(default_factory=list)
     message_ids: List[str] = Field(default_factory=list)
-    final_document: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

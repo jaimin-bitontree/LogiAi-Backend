@@ -10,13 +10,10 @@ The LLM only needs to decide WHICH tool to call, not manage DB.
 """
 
 import logging
-from langchain_groq import ChatGroq
-
-#from langchain_google_genai import ChatGoogleGenerativeAI
-
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, AIMessage
 
-from config.settings import settings, GROQ_API_KEYS
+from config.settings import settings
 from agent.tools.extraction_tool import extract_shipment_fields, extract_missing_field_values
 from agent.tools.email_tools import send_missing_info_email, send_complete_info_emails
 from agent.tools.pricing_tools import calculate_and_send_pricing
@@ -41,37 +38,23 @@ TOOLS = [
     handle_spam_email,
 ]
 
-# ── Model fallback list (in order of preference) ──────────────
-# llama-3.3-70b-versatile is the best Groq model for tool calling
-# gpt-oss-120b as fallback — fast and cheap
+# ── Model configuration ──────────────
+# Using Gemini 2.5 Flash for all agent operations
 MODEL_FALLBACK = [
-    "llama-3.3-70b-versatile",   # Best Groq model for tool calling
-    "llama-3.1-8b-instant",      # Fallback if primary is rate limited
+    "gemini-2.5-flash",
 ]
-
-# MODEL_FALLBACK = [
-#  "gemini-1.5-pro",    # Best Gemini model for tool calling
-#    "gemini-1.5-flash",  # Fallback if primary is rate limited
-#]
- 
 
 def get_llm_with_tools():
     """
-    Try to create LLM with tools, falling back through model list if rate limited.
+    Create LLM with tools using Gemini 2.5 Flash.
     """
     for model_name in MODEL_FALLBACK:
         try:
-            llm = ChatGroq(
+            llm = ChatGoogleGenerativeAI(
                 model=model_name,
-                api_key=settings.GROQ_API_KEY,
+                google_api_key=settings.GEMINI_API_KEY,
                 temperature=0.0,
             )
-
-        #try:
-            #llm = ChatGoogleGenerativeAI(
-                #model=model_name,
-                #google_api_key=settings.GEMINI_API_KEY,
-
             llm_with_tools = llm.bind_tools(TOOLS, tool_choice="auto")
             logger.info(f"[agent_node] Using model: {model_name}")
             return llm_with_tools, model_name
@@ -80,14 +63,9 @@ def get_llm_with_tools():
             continue
     
     # If all fail, use the last one anyway (will error later but at least we tried)
-    llm = ChatGroq(
+    llm = ChatGoogleGenerativeAI(
         model=MODEL_FALLBACK[-1],
-        api_key=settings.GROQ_API_KEY,
-
-    #llm = ChatGoogleGenerativeAI(
-                    #model=model_name,
-                    #google_api_key=settings.GEMINI_API_KEY,
-
+        google_api_key=settings.GEMINI_API_KEY,
         temperature=0.0,
     )
     return llm.bind_tools(TOOLS, tool_choice="auto"), MODEL_FALLBACK[-1]
@@ -174,101 +152,81 @@ def call_agent(state: dict) -> dict:
     The main agent reasoning node.
     Reads the current message history and calls the LLM with tools.
     The LLM decides which tool to call next (or ends the loop).
-    Implements fallback strategy for rate limits and API key rotation.
+    Uses Gemini 2.5 Flash for all operations.
     """
     
-    # Try each API key
+    # Try each model with retry logic
     last_error = None
-    for api_key_index, api_key in enumerate(GROQ_API_KEYS):
-        # Try each model with this API key
-        for model_name in MODEL_FALLBACK:
-            # Retry each model up to 2 times for transient errors
-            for attempt in range(2):
-                try:
-                    # Use simpler prompt for 8B model
-                    prompt = SYSTEM_PROMPT_8B if "8b" in model_name.lower() else SYSTEM_PROMPT
-                    system_msg = SystemMessage(content=prompt)
-                    messages = [system_msg] + state["messages"]
+    for model_name in MODEL_FALLBACK:
+        # Retry each model up to 2 times for transient errors
+        for attempt in range(2):
+            try:
+                system_msg = SystemMessage(content=SYSTEM_PROMPT)
+                messages = [system_msg] + state["messages"]
+                
+                llm = ChatGoogleGenerativeAI(
+                    model=model_name,
+                    google_api_key=settings.GEMINI_API_KEY,
+                    temperature=0.0,
+                )
+                
+                llm_with_tools = llm.bind_tools(TOOLS, tool_choice="auto")
+                
+                if attempt == 0:
+                    logger.info(f"[agent_node] Trying {model_name}")
+                else:
+                    logger.info(f"[agent_node] Retrying {model_name} (attempt {attempt + 1})")
                     
-                    llm = ChatGroq(
-
-                    #llm = ChatGoogleGenerativeAI(
-                        model=model_name,
-                        api_key=api_key,
-                        temperature=0.0,
-                    )
-                    
-                    # For 8B model, try to force tool calling by being more explicit
-                    if "8b" in model_name.lower():
-                        llm_with_tools = llm.bind_tools(TOOLS)
-                    else:
-                        llm_with_tools = llm.bind_tools(TOOLS, tool_choice="auto")
-                    
-                    if attempt == 0:
-                        key_label = f"Key {api_key_index + 1}/{len(GROQ_API_KEYS)}"
-                        logger.info(f"[agent_node] Trying {model_name} with {key_label}")
-                    else:
-                        logger.info(f"[agent_node] Retrying {model_name} (attempt {attempt + 1})")
-                        
-                    response = llm_with_tools.invoke(messages)
-                    
-                    # Check if 8B model returned text instead of tool calls
-                    if "8b" in model_name.lower() and not response.tool_calls and response.content:
-                        logger.warning(f"[agent_node] 8B model returned text instead of tool call, skipping...")
-                        logger.warning(f"[agent_node] 8B model failed to call tools")
-                        break  # Don't retry, move to next model
-                    
-                    logger.info(f"[agent_node] Success with {model_name}")
-                    logger.info(f"[agent_node] Tool calls: {response.tool_calls}")
-                    
-                    logger.info(
-                        "[agent_node] LLM response | model=%s | api_key=%d | tool_calls=%d",
-                        model_name,
-                        api_key_index + 1,
-                        len(response.tool_calls) if response.tool_calls else 0
-                    )
-                    
-                    return {"messages": [response]}
-                    
-                except Exception as e:
-                    error_str = str(e)
-                    last_error = e
-                    
-                    # Check if it's a rate limit error - try next API key
-                    if "rate_limit" in error_str.lower() or "429" in error_str:
-                        logger.warning(f"[agent_node] Rate limit on key {api_key_index + 1}, trying next...")
-                        logger.warning(f"[agent_node] Rate limit on API key {api_key_index + 1}")
-                        break  # Break retry loop, try next model with this key
-                    
+                response = llm_with_tools.invoke(messages)
+                
+                logger.info(f"[agent_node] Success with {model_name}")
+                logger.info(f"[agent_node] Tool calls: {response.tool_calls}")
+                
+                logger.info(
+                    "[agent_node] LLM response | model=%s | tool_calls=%d",
+                    model_name,
+                    len(response.tool_calls) if response.tool_calls else 0
+                )
+                
+                return {"messages": [response]}
+                
+            except Exception as e:
+                error_str = str(e)
+                last_error = e
+                
+                # Check if it's a rate limit error
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    logger.warning(f"[agent_node] Rate limit on {model_name}, retrying...")
+                    break  # Break retry loop, try next model
+                
+                # Check if it's a quota error
+                if "quota" in error_str.lower() or "resource_exhausted" in error_str.lower():
+                    logger.warning(f"[agent_node] Quota exceeded on {model_name}")
+                    break  # Try next model
+                
+                # For other errors, retry
+                if attempt < 1:
+                    logger.warning(f"[agent_node] Error on attempt {attempt + 1}: {error_str}")
+                    continue
+                else:
+                    logger.error(f"[agent_node] Failed after {attempt + 1} attempts: {error_str}")
+                    break
                     # Check if it's a tool calling error - retry once
-                    elif "tool_use_failed" in error_str or "invalid_request" in error_str:
+                    if "tool_use_failed" in error_str or "invalid_request" in error_str:
                         if attempt == 0:
                             logger.warning(f"[agent_node] Tool error, retrying...")
                             logger.warning(f"[agent_node] Tool error, retrying...")
                             continue  # Retry same model
-                        else:
-                            logger.warning(f"[agent_node] Tool error persists, trying next model...")
-                            logger.warning(f"[agent_node] Tool error persists, trying next...")
-                            break  # Try next model
-                    
-                    # Other errors
-                    else:
-                        logger.error(f"[agent_node] Error: {e}")
-                        logger.error(f"[agent_node] Error: {e}")
-                        break
     
-    # All API keys and models failed
-    logger.error(f"[agent_node] All API keys and models failed. Last error: {last_error}")
-    logger.error(f"[agent_node] All API keys exhausted. Last error: {last_error}")
+    # All models failed
+    logger.error(f"[agent_node] All models failed. Last error: {last_error}")
     
-    # Check if it was all rate limits
+    # Check if it was rate limits
     if last_error and ("rate_limit" in str(last_error).lower() or "429" in str(last_error)):
-        logger.warning(f"All {len(GROQ_API_KEYS)} API key(s) are rate limited!")
-        logger.info("Solutions: 1. Wait 8-10 minutes for rate limits to reset")
-        logger.info("2. Add more API keys to .env (GROQ_API_KEY_2, GROQ_API_KEY_3)")
-        logger.info("3. Upgrade accounts to Groq Dev Tier")
-        logger.info("4. Switch to OpenAI API")
+        logger.warning("Gemini API rate limited!")
+        logger.info("Solutions: 1. Wait a few minutes for rate limits to reset")
+        logger.info("2. Check your Gemini API quota")
     
     # Return error message to end workflow gracefully
-    error_msg = AIMessage(content=f"All API keys failed. Last error: {str(last_error)}")
+    error_msg = AIMessage(content=f"All models failed. Last error: {str(last_error)}")
     return {"messages": [error_msg]}

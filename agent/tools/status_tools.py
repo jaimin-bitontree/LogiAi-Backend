@@ -11,7 +11,7 @@ from models.shipment import Message
 from services.shipment.status_service import get_shipment_status_context
 from services.email.email_sender import send_email
 from services.email.email_template import build_email
-from services.shipment.shipment_service import update_shipment_thread_id, update_shipment, get_shipment_by_request_id, log_outgoing_message
+from services.shipment.shipment_service import update_shipment_thread_id, update_shipment, find_by_request_id, log_outgoing_message
 from services.ai.language_service import translate_to_language, translate_text_to_language
 from utils.language_helpers import get_detected_lang
 
@@ -119,7 +119,7 @@ async def send_status_update(
         )
 
         # Override with DB language
-        shipment_doc  = await get_shipment_by_request_id(request_id)
+        shipment_doc  = await find_by_request_id(request_id)
         detected_lang = get_detected_lang(shipment_doc) or detected_lang
 
         email_body = build_email(

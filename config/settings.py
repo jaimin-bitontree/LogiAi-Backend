@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     EXTRACTION_MODEL:              str   = "llama-3.1-8b-instant"
     SMTP_HOST:                     str   = "smtp.gmail.com"
     SMTP_PORT:                     int   = 587
+    
+    #GEMINI_API_KEY:                str
+    #LANGUAGE_DETECT_MODEL:         str   = "gemini-1.5-flash"
+    #LANGUAGE_TRANSLATE_MODEL:      str   = "gemini-1.5-flash"
+    #EXTRACTION_MODEL:              str   = "gemini-1.5-pro"
+    
     OPERATOR_EMAIL:                str   = ""
     SYSTEM_EMAIL:                  str
 

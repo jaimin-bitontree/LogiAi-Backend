@@ -20,7 +20,7 @@ def get_detected_lang(shipment_doc: dict) -> str:
     """Extract detected_language from a shipment document fetched from DB."""
     if not shipment_doc:
         return "en"
-    lang_meta = shipment_doc.get("language_metadata", {})
+    lang_meta = shipment_doc.get("language_metadata")
     if isinstance(lang_meta, dict):
         detected = lang_meta.get("detected_language") or "en"
     else:
@@ -32,12 +32,10 @@ def get_detected_lang(shipment_doc: dict) -> str:
 def protect_req_ids(text: str) -> tuple[str, dict]:
     """Replace REQ-YYYY-XXXXXXXXXX patterns with placeholders before translation."""
     placeholders = {}
-
-    def replacer(m):
+    def replacer(match):
         key = f"__REQID{len(placeholders)}__"
-        placeholders[key] = m.group(0)
+        placeholders[key] = match.group(0)
         return key
-
     protected = _REQ_ID_PATTERN.sub(replacer, text)
     return protected, placeholders
 

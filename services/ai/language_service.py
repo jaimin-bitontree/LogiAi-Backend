@@ -7,6 +7,7 @@ from utils.language_helpers import protect_req_ids, restore_req_ids
 
 logger = logging.getLogger(__name__)
 client = Groq(api_key=settings.GROQ_API_KEY)
+#genai.configure(api_key=settings.GEMINI_API_KEY)
 
 
 def detect_language(text: str) -> tuple[str, float]:
@@ -31,6 +32,7 @@ def detect_language(text: str) -> tuple[str, float]:
 def detect_language_with_llm(text: str) -> tuple[str, float]:
     try:
         response = client.chat.completions.create(
+            #model = genai.GenerativeModel(
             model=settings.LANGUAGE_DETECT_MODEL,
             messages=[
                 {
@@ -55,6 +57,7 @@ def detect_language_with_llm(text: str) -> tuple[str, float]:
 def translate_with_llm(text: str) -> str:
     try:
         response = client.chat.completions.create(
+            #model = genai.GenerativeModel(
             model=settings.LANGUAGE_TRANSLATE_MODEL,
             messages=[
                 {
@@ -95,6 +98,7 @@ def translate_text_to_language(text: str, target_lang: str) -> str:
 
     try:
         response = client.chat.completions.create(
+            #model = genai.GenerativeModel(
             model=settings.LANGUAGE_TRANSLATE_MODEL,
             max_tokens=300,
             messages=[
@@ -180,10 +184,7 @@ def translate_to_language(text: str, target_lang: str) -> str:
     if not target_lang or target_lang == "en":
         return text
 
-    chunks = _split_html_into_chunks(text, chunk_size=4000)
-    # Protect REQ IDs before splitting/translating
     protected_text, placeholders = protect_req_ids(text)
-
     chunks = _split_html_into_chunks(protected_text, chunk_size=4000)
     translated_chunks = []
 
@@ -192,6 +193,7 @@ def translate_to_language(text: str, target_lang: str) -> str:
     for i, chunk in enumerate(chunks):
         try:
             response = client.chat.completions.create(
+                #model = genai.GenerativeModel(
                 model=settings.LANGUAGE_TRANSLATE_MODEL,
                 max_tokens=8000,
                 messages=[
@@ -220,7 +222,6 @@ def translate_to_language(text: str, target_lang: str) -> str:
             translated_chunk = response.choices[0].message.content.strip()
             translated_chunk = _strip_llm_preamble(translated_chunk)
 
-            # Guard: if LLM returned empty string, fall back to original chunk
             if not translated_chunk.strip():
                 logger.warning(f"[language_service] Chunk {i + 1}/{len(chunks)} returned empty — using original chunk")
                 translated_chunks.append(chunk)
@@ -232,13 +233,11 @@ def translate_to_language(text: str, target_lang: str) -> str:
             translated_chunks.append(chunk)
             continue
 
-        # Guard: if LLM returned empty string, fall back to original chunk
         if not translated_chunk.strip():
             logger.warning(f"[language_service] Chunk {i + 1}/{len(chunks)} returned empty — using original chunk")
             translated_chunks[-1] = chunk
 
     translated = "".join(translated_chunks)
-    # Restore REQ IDs after all chunks are assembled
     translated = restore_req_ids(translated, placeholders)
     logger.info(f"[language_service] HTML translation complete → '{target_lang}' ({len(translated)} chars)")
     return translated

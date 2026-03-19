@@ -6,6 +6,7 @@ from config.settings import settings
 from models.shipment import PricingSchema
 
 logger = logging.getLogger(__name__)
+#genai.configure(api_key=settings.GEMINI_API_KEY)
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 PRICING_SYSTEM_PROMPT = """
@@ -153,6 +154,7 @@ def extract_pricing_data(email_body: str) -> tuple[Optional[PricingSchema], Opti
         logger.debug(f"[pricing_service] Using model: {settings.EXTRACTION_MODEL}")
         
         response = client.chat.completions.create(
+          #model = genai.GenerativeModel(
             model=settings.EXTRACTION_MODEL,
             messages=[
                 {"role": "system", "content": PRICING_SYSTEM_PROMPT},

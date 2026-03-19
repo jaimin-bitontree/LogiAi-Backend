@@ -2,6 +2,7 @@ import json
 import logging
 from groq import Groq
 from pydantic import ValidationError
+from config.settings import settings
 from schemas.extraction_schema import ExtractionSchema
 from config.constants import (
     INCOTERMS,
@@ -12,13 +13,13 @@ from config.constants import (
     REQUIRED_FIELDS,
     OPTIONAL_FIELDS,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 
-from config.settings import settings
-
 client = Groq(api_key=settings.GROQ_API_KEY)
+
+#genai.configure(api_key=settings.GEMINI_API_KEY)
+
 EXTRACTION_MODEL = settings.EXTRACTION_MODEL
 
 # ===================================================
@@ -94,9 +95,35 @@ EXAMPLES:
 ✅ CORRECT: {{"customer_street_number": "5", "quantity": 10, "cargo_weight": "4800 kg", "volume": "22 CBM", "length": "1.2 m", "stackable": true}}
 ❌ WRONG: {{"customer_street_number": 5, "quantity": "10", "cargo_weight": 4800, "volume": 22}}
 
-Return ONLY JSON in this format:
+Return ONLY a JSON object (not a list) in this format:
 {_JSON_FORMAT}
 """.strip()
+
+
+def _safe_parse(raw_text: str) -> dict:
+    """
+    Safely parse LLM JSON response.
+    Handles edge cases:
+    - LLM returns a list instead of a dict → take first item
+    - LLM wraps dict in a list → unwrap it
+    """
+    parsed = json.loads(raw_text)
+
+    # If LLM returned a list, take the first item
+    if isinstance(parsed, list):
+        logger.warning(
+            "[extraction_service] LLM returned a list instead of dict — "
+            "taking first item"
+        )
+        if not parsed:
+            raise ValueError("LLM returned empty list")
+        parsed = parsed[0]
+
+    # Final check — must be a dict
+    if not isinstance(parsed, dict):
+        raise ValueError(f"LLM returned unexpected type: {type(parsed)}")
+
+    return parsed
 
 
 def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
@@ -112,7 +139,7 @@ def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
         Validated ExtractionSchema object
     """
     subject = (email_subject or "").strip()
-    body = (email_body    or "").strip()
+    body    = (email_body    or "").strip()
 
     if not subject and not body:
         raise ValueError("Email subject and body are empty.")
@@ -131,22 +158,22 @@ def extract_fields(email_subject: str, email_body: str) -> ExtractionSchema:
             ],
             temperature=0.0,
             max_tokens=1024,
-            response_format={"type": "json_object"}  # Force JSON output
+            response_format={"type": "json_object"}
         )
 
         raw_text = response.choices[0].message.content.strip()
-        
+
         if not raw_text:
             logger.error("LLM returned empty content")
             raise ValueError("LLM returned empty content")
-        
+
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-        
+
         if not raw_text:
             logger.error("Empty after cleaning markdown")
             raise ValueError("Empty response after cleaning markdown")
-        
-        parsed = json.loads(raw_text)
+
+        parsed = _safe_parse(raw_text)
 
         return ExtractionSchema(**parsed)
 
@@ -173,9 +200,6 @@ def extract_missing_fields(
     Calls Groq LLM to extract ONLY the missing fields from a reply email.
     Used for missing_information intent.
 
-    Only sends the missing field names to the LLM — not all fields.
-    This is more focused and accurate than re-extracting everything.
-
     Args:
         email_subject:  Reply email subject
         email_body:     Reply email body
@@ -195,10 +219,6 @@ def extract_missing_fields(
 
     email_content = f"Subject: {subject}\n\nBody:\n{body}"
 
-    # Build a focused prompt with only the missing fields
-    missing_format = json.dumps({field: None for field in missing_fields}, indent=2)
-
-    # Build format with ALL fields (not just missing ones)
     all_fields_format = json.dumps(
         {field: None for field in REQUIRED_FIELDS + OPTIONAL_FIELDS},
         indent=2
@@ -241,8 +261,6 @@ CRITICAL DATA TYPE RULES:
    - length: "1.2 m"          (NOT 1.2)
    - height: "1.5 m"          (NOT 1.5)
    - width: "1.0 m"           (NOT 1.0)
-   If no unit is mentioned in the email, use the most common unit for that field:
-   cargo_weight → kg, volume → CBM, length/height/width → m
 
 4. BOOLEAN fields (true/false without quotes):
    - stackable: true (NOT "true")
@@ -255,11 +273,7 @@ Extraction Rules:
 4. Convert written numbers to digits: "ten" → "10 kg"
 5. If a field is not mentioned → null
 
-EXAMPLES:
-✅ CORRECT: {{"customer_street_number": "5", "quantity": 10, "cargo_weight": "4800 kg", "volume": "22 CBM", "length": "1.2 m", "stackable": true}}
-❌ WRONG: {{"customer_street_number": 5, "quantity": "10", "cargo_weight": 4800, "volume": 22}}
-
-Return JSON with ALL fields (set to null if not mentioned):
+Return ONLY a JSON object (not a list) with ALL fields (set to null if not mentioned):
 {all_fields_format}
 """.strip()
 
@@ -270,29 +284,27 @@ Return JSON with ALL fields (set to null if not mentioned):
                 {"role": "system", "content": focused_prompt},
                 {
                     "role": "user",
-                    "content": f"Extract fields from this reply (prioritize the missing fields but also extract any other fields mentioned):\n\n{email_content}",
+                    "content": f"Extract fields from this reply:\n\n{email_content}",
                 },
             ],
             temperature=0.0,
-            max_tokens=1024,  # Increased from 512 since we're extracting more fields
-            response_format={"type": "json_object"}  # Force JSON output
+            max_tokens=1024,
+            response_format={"type": "json_object"}
         )
 
         raw_text = response.choices[0].message.content
         if not raw_text:
             logger.error("LLM returned empty content")
             raise ValueError("LLM returned empty content")
-        
+
         raw_text = raw_text.strip()
-        logger.debug(f"LLM raw response: {raw_text[:200]}")
-        
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-        
+
         if not raw_text:
             logger.error("Empty after cleaning")
             raise ValueError("Empty response after cleaning markdown")
-        
-        parsed = json.loads(raw_text)
+
+        parsed = _safe_parse(raw_text)
 
         # Return only non-null values
         return {k: v for k, v in parsed.items() if v is not None}

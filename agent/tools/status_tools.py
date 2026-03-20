@@ -3,6 +3,7 @@ agent/tools/status_tools.py
 """
 
 import logging
+from typing import Optional
 from langchain_core.tools import tool
 
 from config.settings import settings
@@ -23,7 +24,7 @@ async def send_status_update(
     request_id:      str,
     customer_email:  str,
     customer_name:   str = "Customer",
-    last_message_id: str = None,
+    last_message_id: Optional[str] = None,
     detected_lang:   str = "en",
 ) -> str:
     """Send shipment status update to customer.

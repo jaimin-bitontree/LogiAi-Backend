@@ -63,6 +63,8 @@ async def process_email_with_limit(raw_email):
             logger.error(f"❌ Failed to process email: {e}")
             # Don't mark as seen if failed - email stays unread for retry
             return None
+# Global set to track message IDs currently being processed
+processing_message_ids = set()
 
 
 async def job():

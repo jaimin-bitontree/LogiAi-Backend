@@ -1,16 +1,19 @@
 import fitz  # PyMuPDF
 import io
 import re
+import os
 import openpyxl
-import easyocr
-import numpy as np
+import pytesseract
 import logging
+from PIL import Image
 
 # Initialize logger
 logger = logging.getLogger(__name__)
 
-# Initialize EasyOCR reader once — loads model on first run
-_reader = easyocr.Reader(["en"], gpu=False)
+# Only set Windows path if running locally on Windows
+# On Render (Linux), tesseract is installed via apt and found automatically
+if os.name == 'nt':
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 
 def _is_meaningful_text(text: str) -> bool:
@@ -20,19 +23,18 @@ def _is_meaningful_text(text: str) -> bool:
     """
     real_words = re.findall(r'[a-zA-Z]{3,}', text)
     is_meaningful = len(real_words) >= 5
-    
+
     if not is_meaningful and text:
         logger.debug(f"Text not meaningful: {len(real_words)} real words found in {len(text)} chars")
-    
-    return is_meaningful
 
+    return is_meaningful
 
 
 # OCR
 def _extract_text_from_scanned_pdf(pdf_bytes: bytes) -> str:
     """
     OCR fallback for scanned / image-based PDFs with layout preservation.
-    Uses fitz to convert pages to images, then EasyOCR reads them with coordinates.
+    Uses fitz to convert pages to images, then pytesseract reads them.
     """
     full_text = ""
 
@@ -40,66 +42,27 @@ def _extract_text_from_scanned_pdf(pdf_bytes: bytes) -> str:
         with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
             for i, page in enumerate(doc):
                 try:
-                    # Convert page to image using fitz
+                    # Convert page to image using fitz at 300 DPI
                     pix = page.get_pixmap(dpi=300)
 
-                    # Convert to numpy array for EasyOCR
-                    image_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
-                        pix.height, pix.width, pix.n
-                    )
+                    # Convert fitz pixmap to PIL Image for pytesseract
+                    img_bytes = pix.tobytes("png")
+                    image = Image.open(io.BytesIO(img_bytes))
 
-                    # EasyOCR reads text with coordinates for layout preservation
-                    results = _reader.readtext(
-                        image_np,
-                        detail=1,
-                        paragraph=False,
-                        width_ths=0.7,
-                        height_ths=0.5,
-                        ycenter_ths=0.5,
-                        decoder='beamsearch',
-                        batch_size=1,
-                        contrast_ths=0.3,
-                        adjust_contrast=0.7,
-                        text_threshold=0.6,
-                        low_text=0.3,
-                        link_threshold=0.3,
-                        mag_ratio=1.0
-                    )
+                    # Convert RGBA to RGB if needed (pytesseract needs RGB)
+                    if image.mode == "RGBA":
+                        image = image.convert("RGB")
 
-                    if not results:
-                        continue
-
-                    # Sort by reading order (top to bottom, left to right)
-                    results.sort(key=lambda x: (x[0][0][1], x[0][0][0]))
-
-                    # Group text by lines based on y-coordinate
-                    lines = []
-                    current_line = []
-                    current_y = None
-                    y_threshold = 20
-
-                    for bbox, text, confidence in results:
-                        top_y = bbox[0][1]
-
-                        if current_y is None:
-                            current_y = top_y
-                            current_line.append(text)
-                        elif abs(top_y - current_y) <= y_threshold:
-                            current_line.append(text)
-                        else:
-                            if current_line:
-                                lines.append(" ".join(current_line))
-                            current_line = [text]
-                            current_y = top_y
-
-                    if current_line:
-                        lines.append(" ".join(current_line))
-
-                    page_text = "\n".join(lines).strip()
+                    # pytesseract reads text with layout preservation
+                    # psm 6 = assume uniform block of text (good for documents)
+                    custom_config = r'--oem 3 --psm 6'
+                    page_text = pytesseract.image_to_string(image, config=custom_config).strip()
 
                     if page_text:
                         full_text += f"\n[Page {i + 1}]\n{page_text}\n"
                         logger.info(f"Page {i+1}: Extracted {len(page_text)} chars with OCR")
+                    else:
+                        logger.warning(f"Page {i+1}: pytesseract returned empty text")
 
                 except Exception as e:
                     logger.error(f"OCR failed for page {i + 1}: {e}")
@@ -118,7 +81,7 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     Extracts all text from PDF bytes.
 
     Step 1: Try fitz (PyMuPDF) — works for digital PDFs
-    Step 2: If text is not meaningful → PDF is scanned/image → try EasyOCR
+    Step 2: If text is not meaningful → PDF is scanned/image → try pytesseract
     Step 3: If OCR also fails → return empty string → parse_node adds warning
     """
     # Step 1 — try fitz first
@@ -146,15 +109,15 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
 
     text = text.strip()
 
-    # Step 2 — not meaningful means garbage/scanned → try EasyOCR
+    # Step 2 — not meaningful means garbage/scanned → try pytesseract
     if not _is_meaningful_text(text):
         logger.warning(f"fitz text not meaningful ({len(text)} chars) — trying OCR...")
         text = _extract_text_from_scanned_pdf(pdf_bytes)
 
         if text:
-            logger.info(f"EasyOCR extracted {len(text)} chars")
+            logger.info(f"pytesseract extracted {len(text)} chars")
         else:
-            logger.warning("EasyOCR also returned empty")
+            logger.warning("pytesseract also returned empty")
 
     return text
 
@@ -170,7 +133,7 @@ def extract_text_from_excel(excel_bytes: bytes) -> str:
     try:
         wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
         logger.debug(f"Processing Excel workbook with {len(wb.sheetnames)} sheets")
-        
+
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
             text += f"\n[Sheet: {sheet_name}]\n"
@@ -180,12 +143,12 @@ def extract_text_from_excel(excel_bytes: bytes) -> str:
                 if values:
                     text += " | ".join(values) + "\n"
                     row_count += 1
-            
+
             logger.debug(f"Sheet '{sheet_name}': extracted {row_count} rows")
-            
+
     except Exception as e:
         logger.error(f"Excel extraction failed: {e}")
         return f"[ERROR: Excel extraction failed — {e}]"
-    
+
     logger.info(f"Excel extraction completed: {len(text)} chars")
     return text.strip()

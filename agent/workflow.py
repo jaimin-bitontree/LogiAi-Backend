@@ -203,6 +203,9 @@ def route_after_intent(state: AgentState) -> str:
     elif intent == "cancellation":
         logger.info("[workflow] cancellation detected- routing directly to context_builder (skipping reqid)")
         return "context_builder"
+    elif intent == "status_inquiry":
+        logger.info("[workflow] status inquiry detected- routing directly to context_builder (skipping reqid)")
+        return "context_builder"
     else:
         return "reqid"
 
@@ -244,7 +247,13 @@ def should_continue(state: AgentState) -> str:
             "✅ Status update sent", 
             "✅ Confirmation email sent",
             "✅ Cancellation email sent",
-            "✅ Spam email handled"
+            "✅ Spam email handled",
+            "✅ Request ID required email sent to {customer_email} ...",
+            "❌ Shipment {request_id} not found | guidance_email_sent ...",
+            "✅ Pricing reminder sent to operator ...",
+            "✅ Already confirmed email sent to {customer_email} ...",
+            "✅ Not-quoted email sent to {customer_email} ...",
+            "✅ Confirmation email sent to {customer_email} ..."  
         ]
         
         if any(indicator in content for indicator in email_indicators):

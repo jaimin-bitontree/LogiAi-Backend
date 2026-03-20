@@ -19,33 +19,9 @@ EMAIL_SEMAPHORE = asyncio.Semaphore(3)
 processing_message_ids = set()
 
 def mark_single_email_as_seen(message_id: str):
-    """Mark single email as seen by Message-ID"""
-    from services.email.gmail_receiver import connect_gmail
-    
-    mail = None
-    try:
-        mail = connect_gmail()
-        
-        # Search for email by Message-ID
-        status, email_ids = mail.search(None, f'HEADER Message-ID "{message_id}"')
-        
-        if status == "OK" and email_ids[0]:
-            email_id = email_ids[0].split()[0]  # Get first match
-            # Mark as seen
-            mail.store(email_id, "+FLAGS", "\\Seen")
-            logger.info(f"✅ Marked as seen: {message_id}")
-        else:
-            logger.warning(f"⚠️ Email not found for marking: {message_id}")
-    
-    except Exception as e:
-        logger.error(f"❌ Failed to mark email as seen {message_id}: {e}")
-    
-    finally:
-        if mail:
-            try:
-                mail.logout()
-            except Exception:
-                pass
+    """Mark single email as seen by Message-ID using Gmail API"""
+    from services.email.gmail_receiver import mark_single_email_as_seen as _mark
+    _mark(message_id)
 
 
 async def process_email_with_limit(raw_email):

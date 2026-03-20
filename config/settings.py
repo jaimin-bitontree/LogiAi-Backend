@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY:     str
     JWT_EXPIRE_MINUTES: int = 1440
 
+    CRON_SECRET:        str = "change-me"
+
     class Config:
         env_file = ".env"
 

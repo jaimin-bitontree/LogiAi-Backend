@@ -15,6 +15,8 @@ scheduler = AsyncIOScheduler()
 # Semaphore to limit concurrent email processing to 3
 EMAIL_SEMAPHORE = asyncio.Semaphore(3)
 
+# Global set to track message IDs currently being processed
+processing_message_ids = set()
 
 def mark_single_email_as_seen(message_id: str):
     """Mark single email as seen by Message-ID"""
@@ -50,21 +52,43 @@ async def process_email_with_limit(raw_email):
     """Process single email with semaphore limit and immediate marking"""
     async with EMAIL_SEMAPHORE:
         try:
-            result = await run_workflow(raw_email)
+            # Extract message ID before processing
+            message_id = extract_message_id(raw_email)
             
-            # Mark as seen immediately after this email succeeds
-            if result:
-                message_id = extract_message_id(raw_email)
-                mark_single_email_as_seen(message_id)
-                logger.info(f"✅ Email processed and marked as seen")
+            if not message_id:
+                logger.warning("⚠️ No message ID found, skipping email")
+                return None
             
-            return result
+            # Check if already being processed
+            if message_id in processing_message_ids:
+                logger.info(f"⏭️ Skipping duplicate message: {message_id}")
+                return None
+            
+            # Add to processing set
+            processing_message_ids.add(message_id)
+            logger.info(f"🔄 Processing message: {message_id}")
+
+            logger.info(f"message id set: {processing_message_ids}")
+            
+            try:
+                result = await run_workflow(raw_email)
+                
+                # Mark as seen immediately after this email succeeds
+                if result:
+                    mark_single_email_as_seen(message_id)
+                    logger.info(f"✅ Email processed and marked as seen: {message_id}")
+                
+                return result
+            finally:
+                # Always remove from processing set when done
+                processing_message_ids.discard(message_id)
+                logger.info(f"🗑️ Removed from processing: {message_id}")
+                
         except Exception as e:
             logger.error(f"❌ Failed to process email: {e}")
             # Don't mark as seen if failed - email stays unread for retry
             return None
-# Global set to track message IDs currently being processed
-processing_message_ids = set()
+
 
 
 async def job():
@@ -111,7 +135,7 @@ async def job():
 async def start_poller():
     try:
         if not scheduler.get_jobs():
-            scheduler.add_job(job, "interval", minutes=30)
+            scheduler.add_job(job, "interval", minutes=60,max_instances=5)
 
         scheduler.start()
         logger.info("🚀 Gmail Poller started")

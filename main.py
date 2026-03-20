@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
         # 🔹 Close DB
         logger.info("🔌 Closing database connection...")
         await close_db()
-        logger.info("✅ Shutdown complete")
+        logger.info("✅ Shutdown completed")
 
 
 
@@ -49,7 +49,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173/"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

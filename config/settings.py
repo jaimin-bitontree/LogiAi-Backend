@@ -20,8 +20,7 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY:     str
     CLOUDINARY_API_SECRET:  str
 
-    API_BASE_URL:       str = "http://localhost:8000"
-    FRONTEND_URL:       str = "http://localhost:5173"
+    FRONTEND_URL:       str 
     JWT_SECRET_KEY:     str
     JWT_EXPIRE_MINUTES: int = 1440
 
